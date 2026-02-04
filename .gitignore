@@ -33,3 +33,10 @@ yarn-error.log*
 # Editor
 .vscode/
 .idea/
+
+# Python
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
