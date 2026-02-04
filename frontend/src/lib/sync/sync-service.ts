@@ -27,8 +27,8 @@ class SyncService {
             // 1. Get unsynced orders
             const unsyncedOrders = await db.offlineOrders
                 .where('synced')
-                .equals(false as any) // Dexie boolean filtering workaround if needed, or just 0
-                .toArray(); // Actually boolean works fine in modern Dexie
+                .equals(0) // Use 0 for false in IndexedDB
+                .toArray();
 
             if (unsyncedOrders.length === 0) {
                 this.isSyncing = false;

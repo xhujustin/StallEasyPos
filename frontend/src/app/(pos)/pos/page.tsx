@@ -1,17 +1,25 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { useCartStore } from '@/lib/store/cart-store';
 import { MOCK_PRODUCTS } from '@/lib/api/mock-data';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Trash2, Plus, Minus, CreditCard, ShoppingCart } from 'lucide-react';
-import Link from 'next/link';
+import { CheckoutModal } from '@/components/pos/checkout-modal';
 
 export default function POSPage() {
+    const router = useRouter();
+    const [mounted, setMounted] = useState(false);
+    const [showCheckout, setShowCheckout] = useState(false);
     const { items, addToCart, removeFromCart, updateQuantity, totalAmount } = useCartStore();
     const [activeCategory, setActiveCategory] = useState('全部');
+
+    useEffect(() => {
+        setMounted(true);
+    }, []);
 
     const categories = ['全部', ...Array.from(new Set(MOCK_PRODUCTS.map((p) => p.category)))];
 
@@ -71,7 +79,7 @@ export default function POSPage() {
             <div className="w-[350px] lg:w-[400px] flex flex-col bg-white shadow-xl z-40">
                 <div className="h-16 border-b border-slate-200 flex items-center px-6 justify-between shrink-0">
                     <h2 className="font-bold text-lg text-slate-900">購物車</h2>
-                    <span className="text-sm text-slate-500">{items.length} 項目</span>
+                    <span className="text-sm text-slate-500">{mounted ? items.length : 0} 項目</span>
                 </div>
 
                 <ScrollArea className="flex-1 p-4">
@@ -115,7 +123,7 @@ export default function POSPage() {
                     <div className="flex justify-between items-end">
                         <span className="text-slate-600">總金額</span>
                         <span className="text-3xl font-bold text-slate-900 font-mono tracking-tight">
-                            ${totalAmount()}
+                            ${mounted ? totalAmount() : 0}
                         </span>
                     </div>
 
@@ -124,17 +132,18 @@ export default function POSPage() {
                             <span>掛單</span>
                         </Button>
 
-                        <Link href="/pos/checkout" className="col-span-3">
-                            <Button
-                                className="w-full h-14 text-lg font-bold bg-[#D4AF37] hover:bg-[#C5A028] text-white shadow-md active:translate-y-0.5 transition-all"
-                                disabled={items.length === 0}
-                            >
-                                結帳收款
-                            </Button>
-                        </Link>
+                        <Button
+                            className="col-span-3 w-full h-14 text-lg font-bold bg-[#D4AF37] hover:bg-[#C5A028] text-white shadow-md active:translate-y-0.5 transition-all"
+                            disabled={!mounted || items.length === 0}
+                            onClick={() => setShowCheckout(true)}
+                        >
+                            結帳收款
+                        </Button>
                     </div>
                 </div>
             </div>
+
+            <CheckoutModal open={showCheckout} onClose={() => setShowCheckout(false)} />
         </div>
     );
 }

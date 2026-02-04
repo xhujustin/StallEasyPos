@@ -3,11 +3,9 @@
 import { useRouter } from 'next/navigation';
 import { useCartStore } from '@/lib/store/cart-store';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { useState, useEffect } from 'react';
-import { X, Printer, CheckCircle } from 'lucide-react';
+import { CheckCircle } from 'lucide-react';
 import { Dialog, DialogContent, DialogOverlay } from '@/components/ui/dialog';
 
 export default function CheckoutPage() {
@@ -18,10 +16,9 @@ export default function CheckoutPage() {
     const [isCompleted, setIsCompleted] = useState(false);
     const [change, setChange] = useState(0);
 
-    // If cart is empty, redirect back to POS
     useEffect(() => {
         if (items.length === 0 && !isCompleted) {
-            // router.back(); // Optional: redirect if empty
+            // router.back();
         }
     }, [items, isCompleted, router]);
 
@@ -42,7 +39,6 @@ export default function CheckoutPage() {
         if (received >= total) {
             setChange(received - total);
             setIsCompleted(true);
-            // Here we would call the API to create order
             clearCart();
         }
     };

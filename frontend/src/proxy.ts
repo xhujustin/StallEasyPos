@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
-export function middleware(request: NextRequest) {
+// Next.js 16 Proxy (formerly Middleware)
+export default function proxy(request: NextRequest) {
     const token = request.cookies.get('token')?.value;
     const role = request.cookies.get('role')?.value; // In real app, verify token to get role
     const path = request.nextUrl.pathname;
@@ -24,10 +25,10 @@ export function middleware(request: NextRequest) {
     }
 
     // 3. RBAC 權限控管
-    // Staff: 僅限 /pos, 禁止 /pos/closing, 禁止 /admin
+    // Staff: 僅限 /pos, 禁止 /admin (closing page requires manager PIN in-page)
     if (role === 'staff') {
-        if (path.startsWith('/admin') || path.startsWith('/pos/closing')) {
-            return NextResponse.redirect(new URL('/pos', request.url)); // 或者 403 頁面
+        if (path.startsWith('/admin')) {
+            return NextResponse.redirect(new URL('/pos', request.url));
         }
     }
 

@@ -5,9 +5,9 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Label } from '@/components/ui/label';
 import { AlertCircle } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import styles from './page.module.css';
 
 export default function LoginPage() {
     const router = useRouter();
@@ -34,11 +34,9 @@ export default function LoginPage() {
 
     const handleLogin = async () => {
         setLoading(true);
-        // Simulate API call
         if (pin === '000000') {
-            // Mock successful login
             document.cookie = `token=mock_token; path=/; max-age=3600`;
-            document.cookie = `role=owner; path=/; max-age=3600`; // Default to owner for now
+            document.cookie = `role=owner; path=/; max-age=3600`;
             router.push('/pos');
         } else if (pin === '111111') {
             document.cookie = `token=mock_token; path=/; max-age=3600`;
@@ -51,11 +49,11 @@ export default function LoginPage() {
     };
 
     return (
-        <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-            <Card className="w-full max-w-md shadow-lg border-slate-200">
-                <CardHeader className="text-center space-y-2">
-                    <CardTitle className="text-2xl font-bold text-slate-900">StallEasy POS</CardTitle>
-                    <div className="text-sm text-slate-500">請輸入員工 PIN 碼</div>
+        <div className={styles.container}>
+            <Card className={styles.card}>
+                <CardHeader className={styles.header}>
+                    <CardTitle className={styles.title}>StallEasy POS</CardTitle>
+                    <div className={styles.subtitle}>請輸入員工 PIN 碼</div>
                 </CardHeader>
                 <CardContent className="space-y-6">
                     <div className="flex justify-center">
@@ -63,7 +61,7 @@ export default function LoginPage() {
                             type="password"
                             value={pin}
                             readOnly
-                            className="text-center text-3xl tracking-[1em] h-16 font-mono border-slate-300 focus:border-slate-500 focus:ring-0"
+                            className={styles.pinInput}
                             placeholder="••••••"
                         />
                     </div>
@@ -76,12 +74,12 @@ export default function LoginPage() {
                         </Alert>
                     )}
 
-                    <div className="grid grid-cols-3 gap-4">
+                    <div className={styles.keypad}>
                         {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
                             <Button
                                 key={num}
                                 variant="outline"
-                                className="h-16 text-2xl font-medium text-slate-700 hover:bg-slate-100 hover:text-slate-900 border-slate-300"
+                                className={styles.keyButton}
                                 onClick={() => handlePinInput(num.toString())}
                             >
                                 {num}
@@ -89,21 +87,21 @@ export default function LoginPage() {
                         ))}
                         <Button
                             variant="outline"
-                            className="h-16 text-xl font-medium text-red-600 hover:bg-red-50 border-slate-300"
+                            className={styles.clearButton}
                             onClick={handleClear}
                         >
                             C
                         </Button>
                         <Button
                             variant="outline"
-                            className="h-16 text-2xl font-medium text-slate-700 hover:bg-slate-100 hover:text-slate-900 border-slate-300"
+                            className={styles.keyButton}
                             onClick={() => handlePinInput('0')}
                         >
                             0
                         </Button>
                         <Button
                             variant="outline"
-                            className="h-16 text-xl font-medium text-slate-700 hover:bg-slate-100 border-slate-300"
+                            className={styles.backspaceButton}
                             onClick={handleBackspace}
                         >
                             ⌫
@@ -111,14 +109,14 @@ export default function LoginPage() {
                     </div>
 
                     <Button
-                        className="w-full h-14 text-lg font-semibold bg-[#D4AF37] hover:bg-[#C5A028] text-white shadow-sm"
+                        className={styles.loginButton}
                         onClick={handleLogin}
                         disabled={loading || pin.length < 4}
                     >
                         {loading ? '登入中...' : '登入'}
                     </Button>
 
-                    <div className="text-center text-xs text-slate-400 mt-4">
+                    <div className={styles.hint}>
                         Default Owner PIN: 000000 | Staff: 111111
                     </div>
                 </CardContent>
