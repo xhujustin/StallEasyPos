@@ -1,0 +1,46 @@
+from datetime import datetime
+from enum import Enum
+from typing import Optional, List
+from sqlalchemy import BigInteger, Text, DateTime, func, ForeignKey, UniqueConstraint
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.dialects.postgresql import ENUM as PG_ENUM
+from app.models.base import Base
+
+class UserRole(str, Enum):
+    OWNER = "owner"
+    MANAGER = "manager"
+    STAFF = "staff"
+
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, server_default=func.generated_always_as_identity())
+    username: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    hashed_password: Mapped[str] = mapped_column(Text, nullable=False)
+    
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    # Relationships
+   # store_associations: Mapped[List["StoreUser"]] = relationship(back_populates="user")
+
+class StoreUser(Base):
+    __tablename__ = "store_users"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, server_default=func.generated_always_as_identity())
+    store_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("stores.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    
+    role: Mapped[UserRole] = mapped_column(PG_ENUM(UserRole, name="user_role", create_type=False), nullable=False)
+    pin_hash: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("store_id", "user_id", name="uq_store_users_store_user"),
+    )
+
+    # Relationships (resolved by string to avoid circular imports if needed, or import at top)
+    # user: Mapped["User"] = relationship(back_populates="store_associations")
+    # store: Mapped["Store"] = relationship(back_populates="users")

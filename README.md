@@ -49,8 +49,12 @@ cd frontend
 # 安裝依賴
 npm install
 
-# 啟動開發伺服器
+# 啟動開發伺服器 (Frontend)
 npm run dev
+
+# 啟動開發伺服器 (Backend)
+cd backend
+.\backend.bat
 ```
 
 訪問 http://localhost:3000 開始使用
@@ -86,6 +90,10 @@ StallEasyPos-V1.0.0/
 │   ├── specs/              # 技術規格
 │   ├── architecture/       # 架構設計
 │   └── legal/              # 法規文件
+├── backend/                # FastAPI 後端應用
+│   ├── app/                # 應用程式碼
+│   ├── backend.bat         # 啟動腳本
+│   └── requirements.txt    # Python 依賴
 └── README.md
 ```
 
@@ -94,7 +102,14 @@ StallEasyPos-V1.0.0/
 ### 前端框架
 - **Next.js 16.1.6** - React 框架（App Router）
 - **React 19** - UI 函式庫
+- **React 19** - UI 函式庫
 - **TypeScript** - 型別安全
+
+### 後端框架
+- **FastAPI** - 高效能 Python Web 框架
+- **PostgreSQL** - 關聯式資料庫
+- **SQLAlchemy (Async)** - ORM
+- **Pydantic** - 資料驗證
 
 ### UI 組件
 - **Shadcn UI** - 無障礙 UI 組件庫
@@ -130,6 +145,8 @@ StallEasyPos-V1.0.0/
 - ✅ 後台管理頁面
 - ✅ 離線資料庫與同步
 - ✅ CSS Modules 重構
+- ✅ CSS Modules 重構
+- ✅ 後端架構初始化
 - 🔄 後端 API 整合（進行中）
 - ⏳ 電子發票整合
 - ⏳ 外送平台整合

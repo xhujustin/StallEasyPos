@@ -1,11 +1,59 @@
-# Backend
+# StallEasy POS Backend
 
-- Framework: FastAPI
-- Language: Python
-- DB: PostgreSQL
+基於 FastAPI + PostgreSQL 的高效能後端系統。
 
-## Structure
-- app/api: REST endpoints
-- app/models: SQLAlchemy models
-- app/services: business logic
-- app/workers: async jobs
+## 技術架構
+
+- **Language**: Python 3.11+
+- **Framework**: FastAPI
+- **Database**: PostgreSQL (Async via `asyncpg`)
+- **ORM**: SQLAlchemy 2.0+
+- **Auth**: JWT (OAuth2 Password Bearer) with `python-jose`
+
+## 快速開始 (Windows)
+
+我們提供了一個便捷腳本 `backend.bat` 來自動化環境建置。
+
+1. **進入 backend 目錄**
+   ```powershell
+   cd backend
+   ```
+
+2. **設定環境變數**
+   複製範本並修改設定：
+   ```powershell
+   copy .env.example .env
+   ```
+   *請務必修改 `DATABASE_URL` 與 `SECRET_KEY`*
+
+3. **啟動伺服器**
+   雙擊 `backend.bat` 或在終端機執行：
+   ```powershell
+   .\backend.bat
+   ```
+   腳本會自動：
+   - 建立/啟用 `venv`
+   - 安裝依賴 (`requirements.txt`)
+   - 啟動 Uvicorn (http://localhost:8000)
+
+## 目錄結構
+
+```
+backend/
+├── app/
+│   ├── api/            # API路由 (v1)
+│   ├── core/           # 核心設定 (Config, DB, Security)
+│   ├── models/         # SQLAlchemy 資料庫模型 (ORM)
+│   ├── schemas/        # Pydantic 資料驗證模型
+│   ├── services/       # 業務邏輯層
+│   └── workers/        # 非同步任務與排程
+├── requirements.txt    # Python 依賴清單
+├── backend.bat         # Windows 啟動腳本
+└── Dockerfile          # 容器化部署設定
+```
+
+## API 文件
+
+啟動後可訪問：
+- **Swagger UI**: http://localhost:8000/docs
+- **ReDoc**: http://localhost:8000/redoc
