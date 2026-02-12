@@ -16,6 +16,12 @@ StallEasy POS 是一套專為小吃攤與小型店家設計的 POS 系統，
 - **主管授權**：員工日結需主管 PIN 驗證
 - **路由保護**：基於角色的頁面訪問控制
 
+### 多店管理
+- **店鋪選擇**：登入後選擇要操作的店鋪
+- **角色顯示**：顯示使用者在每個店鋪的角色
+- **店鋪切換**：支援多店鋪使用者切換操作店鋪
+- **管理入口**：老闆帳號可訪問店鋪管理後台
+
 ### 管理功能
 - **日結報表**：每日營收統計與結算
 - **訂單管理**：查看、作廢、補印訂單
@@ -74,26 +80,39 @@ StallEasyPos-V1.0.0/
 ├── frontend/                 # Next.js 前端應用
 │   ├── src/
 │   │   ├── app/             # App Router 頁面
-│   │   │   ├── (public)/   # 公開頁面（登入）
-│   │   │   ├── (pos)/      # POS 收銀系統
-│   │   │   └── (admin)/    # 後台管理
-│   │   ├── components/      # React 組件
+│   │   │   ├── (public)/   # 公開頁面 (Login)
+│   │   │   ├── (pos)/      # POS 收銀主程式
+│   │   │   └── (admin)/    # 後台管理系統
+│   │   ├── components/      # React 組件庫
 │   │   │   ├── ui/         # Shadcn UI 基礎組件
-│   │   │   └── pos/        # POS 專用組件
-│   │   ├── lib/            # 工具函數與狀態管理
-│   │   │   ├── store/      # Zustand 狀態
-│   │   │   ├── db/         # IndexedDB 離線資料庫
-│   │   │   └── sync/       # 同步服務
-│   │   └── proxy.ts        # 認證與 RBAC 中介層
+│   │   │   └── pos/        # POS 業務組件 (Checkout, Cart)
+│   │   ├── lib/            # 核心邏輯層
+│   │   │   ├── api/        # API 客戶端 (Auth, Products, Orders)
+│   │   │   ├── store/      # Zustand 狀態管理 (Auth, Cart)
+│   │   │   ├── db/         # IndexedDB (Dexie) 離線儲存
+│   │   │   └── sync/       # 同步服務邏輯
+│   │   └── proxy.ts        # Next.js Middleware (RBAC/Auth)
 │   └── package.json
-├── docs/                    # 專案文檔
-│   ├── specs/              # 技術規格
-│   ├── architecture/       # 架構設計
-│   └── legal/              # 法規文件
 ├── backend/                # FastAPI 後端應用
-│   ├── app/                # 應用程式碼
-│   ├── backend.bat         # 啟動腳本
-│   └── requirements.txt    # Python 依賴
+│   ├── app/                # 應用程式源碼
+│   │   ├── api/v1/         # API 路由與 Endpoints (Auth, Products, Orders...)
+│   │   ├── models/         # SQLAlchemy 資料庫模型 (User, Store, Product...)
+│   │   ├── schemas/        # Pydantic 資料驗證模型
+│   │   ├── services/       # 業務邏輯層 (Business Logic)
+│   │   ├── core/           # 核心配置 (Database, Security, Config)
+│   │   ├── workers/        # 背景任務處理 (Celery/Async)
+│   │   ├── initial_data.py # 資料庫初始化腳本
+│   │   ├── seed_products.py# 商品種子資料腳本
+│   │   └── main.py         # FastAPI 入口文件
+│   ├── .env                # 環境變數設定
+│   ├── alembic/            # 資料庫遷移工具
+│   ├── backend.bat         # 啟動腳本 (Auto venv & run)
+│   ├── setup_backend.bat   # 環境安裝與初始化腳本
+│   └── requirements.txt    # Python 依賴清單
+├── docs/                    # 專案技術文件庫
+│   ├── specs/              # 系統規格定義 (API, DB Schema)
+│   ├── architecture/       # 系統架構圖與設計說明
+│   └── legal/              # 稅務與法規合規文件
 └── README.md
 ```
 
@@ -145,11 +164,12 @@ StallEasyPos-V1.0.0/
 - ✅ 後台管理頁面
 - ✅ 離線資料庫與同步
 - ✅ CSS Modules 重構
-- ✅ CSS Modules 重構
-- ✅ 後端架構初始化
-- 🔄 後端 API 整合（進行中）
-- ⏳ 電子發票整合
-- ⏳ 外送平台整合
+- ✅ 後端架構初始化與資料庫遷移
+- ✅ 後端 API 整合 (Auth, Products, Orders)
+- ✅ 多店管理與店鋪選擇功能
+- ⏳ 商品管理介面 (規劃中)
+- ⏳ 電子發票整合 (規劃中)
+- ⏳ 外送平台整合 (規劃中)
 
 ## 主要功能截圖
 

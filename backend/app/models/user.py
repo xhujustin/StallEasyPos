@@ -1,10 +1,10 @@
 from datetime import datetime
 from enum import Enum
 from typing import Optional, List
-from sqlalchemy import BigInteger, Text, DateTime, func, ForeignKey, UniqueConstraint
+from sqlalchemy import BigInteger, Text, DateTime, func, ForeignKey, UniqueConstraint, Identity
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import ENUM as PG_ENUM
-from app.models.base import Base
+from app.models.base import Base, psql_enum
 
 class UserRole(str, Enum):
     OWNER = "owner"
@@ -14,7 +14,7 @@ class UserRole(str, Enum):
 class User(Base):
     __tablename__ = "users"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, server_default=func.generated_always_as_identity())
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
     username: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
     hashed_password: Mapped[str] = mapped_column(Text, nullable=False)
     
@@ -27,11 +27,11 @@ class User(Base):
 class StoreUser(Base):
     __tablename__ = "store_users"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, server_default=func.generated_always_as_identity())
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
     store_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("stores.id", ondelete="CASCADE"), nullable=False, index=True)
     user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     
-    role: Mapped[UserRole] = mapped_column(PG_ENUM(UserRole, name="user_role", create_type=False), nullable=False)
+    role: Mapped[UserRole] = mapped_column(psql_enum(UserRole, name="user_role"), nullable=False)
     pin_hash: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

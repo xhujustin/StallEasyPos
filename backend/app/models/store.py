@@ -1,13 +1,13 @@
 from datetime import datetime
 from typing import Optional, List
-from sqlalchemy import BigInteger, Text, DateTime, func
+from sqlalchemy import BigInteger, Text, DateTime, func, Identity
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base
 
 class Store(Base):
     __tablename__ = "stores"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, server_default=func.generated_always_as_identity())
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
     name: Mapped[str] = mapped_column(Text, nullable=False)
     owner_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
     

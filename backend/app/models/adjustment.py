@@ -1,10 +1,10 @@
 from datetime import datetime, date
 from enum import Enum
 from typing import Optional
-from sqlalchemy import BigInteger, Text, Numeric, DateTime, Date, func, ForeignKey, Index
+from sqlalchemy import BigInteger, Text, Numeric, DateTime, Date, func, ForeignKey, Index, Identity
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.dialects.postgresql import ENUM as PG_ENUM
-from app.models.base import Base
+from app.models.base import Base, psql_enum
 
 class AdjustmentType(str, Enum):
     INCREASE = "increase"
@@ -13,11 +13,11 @@ class AdjustmentType(str, Enum):
 class Adjustment(Base):
     __tablename__ = "adjustments"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, server_default=func.generated_always_as_identity())
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
     store_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("stores.id", ondelete="RESTRICT"), nullable=False)
     business_date: Mapped[date] = mapped_column(Date, nullable=False)
     
-    adjustment_type: Mapped[AdjustmentType] = mapped_column(PG_ENUM(AdjustmentType, name="adjustment_type", create_type=False), nullable=False)
+    adjustment_type: Mapped[AdjustmentType] = mapped_column(psql_enum(AdjustmentType, name="adjustment_type"), nullable=False)
     amount: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False) # Check amount > 0 handled in logic or raw SQL
     
     reason_code: Mapped[str] = mapped_column(Text, nullable=False)

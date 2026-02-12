@@ -1,5 +1,48 @@
 # Frontend Changelog
 
+## 2026-02-12
+
+### 新增功能
+- 多店管理系統
+  - 登入後店鋪選擇頁面
+  - 顯示使用者在每個店鋪的角色(owner/manager/staff)
+  - 支援單店自動跳轉,多店顯示選擇介面
+  - 老闆帳號顯示「管理店鋪」按鈕
+- Admin管理後台
+  - 新增/admin主頁面,自動重定向至dashboard
+  - 新增訂單管理頁面佔位符
+  - 修改「前往POS」按鈕,跳轉至店鋪選擇頁面
+
+### 後端API改善
+- StoreOut Schema新增user_role欄位
+- StoreService.get_user_stores返回使用者角色資訊
+- 支援透過store_users表查詢使用者權限
+
+### 前端狀態管理
+- auth-store新增selectedStoreId狀態
+- auth-store新增setSelectedStore方法
+- localStorage持久化選擇的店鋪ID
+
+### Bug修復
+- 修復Next.js hydration問題
+  - 店鋪選擇頁面加入mounted狀態檢查
+  - 避免localStorage未載入時的錯誤跳轉
+- 修復無限循環跳轉問題
+  - 移除POS頁面的自動跳轉邏輯
+  - 改為在登入時處理店鋪選擇
+
+### 檔案變更
+- `frontend/src/lib/store/auth-store.ts`: 新增selectedStoreId狀態管理
+- `frontend/src/app/(public)/select-store/page.tsx`: 新增店鋪選擇頁面
+- `frontend/src/app/(public)/login/page.tsx`: 修改登入流程
+- `frontend/src/app/(admin)/admin/page.tsx`: 新增admin主頁面
+- `frontend/src/app/(admin)/admin/orders/page.tsx`: 新增訂單管理頁面
+- `frontend/src/app/(admin)/layout.tsx`: 修改POS連結
+- `backend/app/schemas/stores.py`: 新增user_role欄位
+- `backend/app/services/store_service.py`: 修改get_user_stores方法
+
+---
+
 ## 2026-02-04
 
 ### 新增功能

@@ -1,10 +1,10 @@
 from datetime import datetime, date
 from enum import Enum
 from typing import Optional, List
-from sqlalchemy import BigInteger, Text, Numeric, Boolean, DateTime, Date, func, ForeignKey, UniqueConstraint, Index
+from sqlalchemy import BigInteger, Text, Numeric, Boolean, DateTime, Date, func, ForeignKey, UniqueConstraint, Index, Identity
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import ENUM as PG_ENUM
-from app.models.base import Base
+from app.models.base import Base, psql_enum
 
 class OrderSource(str, Enum):
     POS = "pos"
@@ -26,15 +26,15 @@ class PaymentMethod(str, Enum):
 class Order(Base):
     __tablename__ = "orders"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, server_default=func.generated_always_as_identity())
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
     store_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("stores.id", ondelete="RESTRICT"), nullable=False)
     order_no: Mapped[int] = mapped_column(BigInteger, nullable=False)
     
-    source: Mapped[OrderSource] = mapped_column(PG_ENUM(OrderSource, name="order_source", create_type=False), nullable=False, server_default="pos")
-    status: Mapped[OrderStatus] = mapped_column(PG_ENUM(OrderStatus, name="order_status", create_type=False), nullable=False)
+    source: Mapped[OrderSource] = mapped_column(psql_enum(OrderSource, name="order_source"), nullable=False, server_default="pos")
+    status: Mapped[OrderStatus] = mapped_column(psql_enum(OrderStatus, name="order_status"), nullable=False)
     
     total_amount: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
-    payment_method: Mapped[Optional[PaymentMethod]] = mapped_column(PG_ENUM(PaymentMethod, name="payment_method", create_type=False), nullable=True)
+    payment_method: Mapped[Optional[PaymentMethod]] = mapped_column(psql_enum(PaymentMethod, name="payment_method"), nullable=True)
     
     idempotency_key: Mapped[str] = mapped_column(Text, nullable=False)
     business_date: Mapped[date] = mapped_column(Date, nullable=False, server_default=func.current_date())
@@ -56,12 +56,12 @@ class Order(Base):
     )
 
     # Relationships
-    # items: Mapped[List["OrderItem"]] = relationship(back_populates="order")
+    items: Mapped[List["OrderItem"]] = relationship(back_populates="order", cascade="all, delete-orphan")
 
 class OrderItem(Base):
     __tablename__ = "order_items"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, server_default=func.generated_always_as_identity())
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
     order_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("orders.id", ondelete="CASCADE"), nullable=False, index=True)
     product_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
     
@@ -75,4 +75,4 @@ class OrderItem(Base):
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
-    # order: Mapped["Order"] = relationship(back_populates="items")
+    order: Mapped["Order"] = relationship(back_populates="items")

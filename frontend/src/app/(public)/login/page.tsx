@@ -8,6 +8,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { AlertCircle } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import styles from './page.module.css';
+import { authApi } from '@/lib/api/auth';
+import { useAuthStore } from '@/lib/store/auth-store';
 
 export default function LoginPage() {
     const router = useRouter();
@@ -34,18 +36,71 @@ export default function LoginPage() {
 
     const handleLogin = async () => {
         setLoading(true);
-        if (pin === '000000') {
-            document.cookie = `token=mock_token; path=/; max-age=3600`;
-            document.cookie = `role=owner; path=/; max-age=3600`;
-            router.push('/pos');
-        } else if (pin === '111111') {
-            document.cookie = `token=mock_token; path=/; max-age=3600`;
-            document.cookie = `role=staff; path=/; max-age=3600`;
-            router.push('/pos');
-        } else {
-            setError('無效的 PIN 碼');
+        setError('');
+
+        try {
+            // Map PIN to credentials (Temporary for V1 connection test)
+            // In production, this should be replaced by a real PIN auth endpoint or user/pass input
+            let username = '';
+            let password = '';
+
+            if (pin === '000000') {
+                username = 'admin'; // Default admin
+                password = 'password';
+            } else if (pin === '111111') {
+                username = 'staff';
+                password = 'password';
+            } else {
+                // Try to use PIN as password for a generic user? 
+                // For now, strict mapping to avoid confusion
+                throw new Error('無效的 PIN 碼');
+            }
+
+            // 1. Login to get token
+            const { access_token } = await authApi.login({ username, password });
+
+            // Set cookie for middleware/server-side check
+            document.cookie = `token=${access_token}; path=/; max-age=${7 * 24 * 60 * 60}`;
+            document.cookie = `role=${username === 'admin' ? 'owner' : 'staff'}; path=/; max-age=${7 * 24 * 60 * 60}`;
+
+            // 2. Set token temporarily to allow getMe
+            useAuthStore.getState().setAuth(access_token, { id: 0, username: 'loading...', is_active: true, stores: [] });
+
+            // 3. Get User Info
+            const meResponse = await authApi.getMe();
+            // meResponse is { data: User } based on ResponseBase[UserOut] wrapper in backend?
+            // Wait, backend returns ResponseBase(data=user). 
+            // So response.data in axios is ResponseBase. 
+            // So response.data.data is the user.
+
+            const user = meResponse;
+
+            // 4. Update Store (先清除舊的selectedStoreId)
+            useAuthStore.getState().setSelectedStore(null as any);
+            useAuthStore.getState().setAuth(access_token, user);
+
+            // 5. Redirect based on stores count
+            if (!user.stores || user.stores.length === 0) {
+                setError('此帳號沒有關聯任何店鋪,請聯絡管理員');
+                return;
+            } else if (user.stores.length === 1) {
+                // 只有一個店鋪,直接設定並跳轉
+                useAuthStore.getState().setSelectedStore(user.stores[0].id);
+                window.location.href = '/pos';
+            } else {
+                // 多個店鋪,跳轉至選擇頁面
+                window.location.href = '/select-store';
+            }
+
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        } catch (err: any) {
+            console.error('Login failed:', err);
+            // Handle Axios error or logic error
+            const msg = err.response?.data?.detail || err.message || '登入失敗，請檢查 PIN 碼或網絡連線';
+            setError(msg);
+        } finally {
+            setLoading(false);
         }
-        setLoading(false);
     };
 
     return (

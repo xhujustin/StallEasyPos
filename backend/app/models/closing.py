@@ -1,13 +1,13 @@
 from datetime import datetime, date
 from typing import Optional
-from sqlalchemy import BigInteger, Numeric, DateTime, Date, func, ForeignKey, UniqueConstraint, Index
+from sqlalchemy import BigInteger, Numeric, DateTime, Date, func, ForeignKey, UniqueConstraint, Index, Identity
 from sqlalchemy.orm import Mapped, mapped_column
 from app.models.base import Base
 
 class DailyClosing(Base):
     __tablename__ = "daily_closings"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, server_default=func.generated_always_as_identity())
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
     store_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("stores.id", ondelete="RESTRICT"), nullable=False)
     business_date: Mapped[date] = mapped_column(Date, nullable=False)
     

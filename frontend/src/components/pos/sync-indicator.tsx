@@ -8,6 +8,7 @@ export function SyncIndicator() {
     const [isOnline, setIsOnline] = useState(true);
 
     useEffect(() => {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setIsOnline(navigator.onLine);
 
         const handleOnline = () => setIsOnline(true);

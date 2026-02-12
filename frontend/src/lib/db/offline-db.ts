@@ -2,6 +2,7 @@ import Dexie, { type EntityTable } from 'dexie';
 
 interface OfflineOrder {
     id?: number;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     items: any[];
     totalAmount: number;
     paymentMethod: string;

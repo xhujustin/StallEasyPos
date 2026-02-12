@@ -1,10 +1,10 @@
 from datetime import datetime
 from enum import Enum
 from typing import Any
-from sqlalchemy import BigInteger, Text, DateTime, func, ForeignKey, Index
+from sqlalchemy import BigInteger, Text, DateTime, func, ForeignKey, Index, Identity
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.dialects.postgresql import JSONB, ENUM as PG_ENUM
-from app.models.base import Base
+from app.models.base import Base, psql_enum
 
 class AuditAction(str, Enum):
     ORDER_CREATED = "order_created"
@@ -21,11 +21,11 @@ class AuditAction(str, Enum):
 class AuditLog(Base):
     __tablename__ = "audit_logs"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, server_default=func.generated_always_as_identity())
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
     store_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("stores.id", ondelete="RESTRICT"), nullable=False)
     actor_user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"), nullable=False)
     
-    action: Mapped[AuditAction] = mapped_column(PG_ENUM(AuditAction, name="audit_action", create_type=False), nullable=False)
+    action: Mapped[AuditAction] = mapped_column(psql_enum(AuditAction, name="audit_action"), nullable=False)
     entity_type: Mapped[str] = mapped_column(Text, nullable=False)
     entity_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     

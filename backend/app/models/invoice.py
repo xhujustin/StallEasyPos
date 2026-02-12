@@ -1,10 +1,10 @@
 from datetime import datetime
 from enum import Enum
 from typing import Optional
-from sqlalchemy import BigInteger, Text, DateTime, func, ForeignKey, Index, UniqueConstraint
+from sqlalchemy import BigInteger, Text, DateTime, func, ForeignKey, Index, UniqueConstraint, Identity
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.dialects.postgresql import ENUM as PG_ENUM
-from app.models.base import Base
+from app.models.base import Base, psql_enum
 
 class InvoiceStatus(str, Enum):
     NONE = "none"
@@ -16,11 +16,11 @@ class InvoiceStatus(str, Enum):
 class InvoiceRecord(Base):
     __tablename__ = "invoice_records"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, server_default=func.generated_always_as_identity())
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
     store_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("stores.id", ondelete="RESTRICT"), nullable=False)
     order_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("orders.id", ondelete="CASCADE"), nullable=False)
     
-    status: Mapped[InvoiceStatus] = mapped_column(PG_ENUM(InvoiceStatus, name="invoice_status", create_type=False), nullable=False, server_default="pending")
+    status: Mapped[InvoiceStatus] = mapped_column(psql_enum(InvoiceStatus, name="invoice_status"), nullable=False, server_default="pending")
     invoice_number: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     carrier: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     tax_id: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

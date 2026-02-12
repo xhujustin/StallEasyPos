@@ -48,7 +48,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 </nav>
 
                 <div className={styles.footer}>
-                    <Link href="/pos">
+                    <Link href="/select-store">
                         <Button variant="outline" className={styles.posLink}>
                             <ExternalLink className="w-4 h-4" />
                             前往 POS

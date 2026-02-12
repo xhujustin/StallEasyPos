@@ -19,9 +19,13 @@ class Base(DeclarativeBase):
     metadata = MetaData(naming_convention=NAMING_CONVENTION)
 
     @declared_attr
-    def__tablename__(cls) -> str:
+    def __tablename__(cls) -> str:
         """
         自動將 table name 轉換為 snake_case
         例如: User -> user, OrderItem -> order_item
         """
         return cls.__name__.lower()
+
+def psql_enum(enum_cls, name=None):
+    from sqlalchemy.dialects.postgresql import ENUM
+    return ENUM(enum_cls, name=name, values_callable=lambda x: [e.value for e in x])

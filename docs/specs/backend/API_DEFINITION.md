@@ -1,7 +1,7 @@
 # API 介面定義與開發規範 (API Definition)
 
 **文件版本**: v1.0  
-**更新日期**: 2026-02-04  
+**更新日期**: 2026-02-05  
 **適用範圍**: 後端開發團隊、前端開發團隊、第三方整合夥伴
 
 ---
@@ -112,3 +112,25 @@ HTTP Status Code: `4xx` or `5xx`
 ## 6. 版本控制 (Versioning)
 - URL 版本號: `/api/v1/...`
 - 重大變更 (Breaking Changes) 需發布 v2，並保留 v1 相容性至少 3 個月。
+
+---
+
+## 7. 已實現介面 (Implemented Endpoints)
+
+### 7.1 認證 (Auth)
+- `POST /auth/login`: 使用者登入並獲取 Access Token (OAuth2 格式)。
+- `POST /auth/register`: 註冊新使用者。
+
+### 7.2 商品 (Products)
+- `GET /products/?store_id={id}`: 取得特定店鋪的所有商品。支援分類與狀態篩選。
+- `POST /products/`: 建立新商品。
+- `PATCH /products/{id}`: 更新商品資訊。
+
+### 7.3 訂單 (Orders)
+- `POST /orders/`: 建立新訂單。支援 **Idempotency Key** 以防止重複提交。
+- `GET /orders/`: 取得訂單列表。
+
+### 7.4 店鋪 (Stores)
+- `GET /stores/`: 取得當前使用者所屬的店鋪列表。
+- `POST /stores/`: 建立新店鋪。
+

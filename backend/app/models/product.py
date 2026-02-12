@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional, Any
-from sqlalchemy import BigInteger, Text, Numeric, Boolean, DateTime, func, ForeignKey, Index
+from sqlalchemy import BigInteger, Text, Numeric, Boolean, DateTime, func, ForeignKey, Index, Identity
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.dialects.postgresql import JSONB
 from app.models.base import Base
@@ -8,7 +8,7 @@ from app.models.base import Base
 class Product(Base):
     __tablename__ = "products"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, server_default=func.generated_always_as_identity())
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
     store_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("stores.id", ondelete="CASCADE"), nullable=False, index=True)
     name: Mapped[str] = mapped_column(Text, nullable=False)
     price: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)

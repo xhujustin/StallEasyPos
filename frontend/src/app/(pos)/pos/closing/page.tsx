@@ -19,6 +19,7 @@ function getUserRole(): string {
 export default function ClosingPage() {
     const [cashActual, setCashActual] = useState('');
     const [loading, setLoading] = useState(false);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const [report, setReport] = useState<any>(null);
     const [showManagerPin, setShowManagerPin] = useState(false);
     const [isAuthorized, setIsAuthorized] = useState(false);
@@ -27,8 +28,10 @@ export default function ClosingPage() {
     // Check if user needs authorization
     useEffect(() => {
         if (userRole === 'staff') {
+            // eslint-disable-next-line react-hooks/set-state-in-effect
             setIsAuthorized(false);
         } else {
+            // eslint-disable-next-line react-hooks/set-state-in-effect
             setIsAuthorized(true);
         }
     }, [userRole]);

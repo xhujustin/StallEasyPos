@@ -2,13 +2,16 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { useQuery } from '@tanstack/react-query';
 import { useCartStore } from '@/lib/store/cart-store';
-import { MOCK_PRODUCTS } from '@/lib/api/mock-data';
+import { useAuthStore } from '@/lib/store/auth-store';
+import { productApi, Product } from '@/lib/api/products';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Trash2, Plus, Minus, CreditCard, ShoppingCart } from 'lucide-react';
+import { Trash2, Plus, Minus, ShoppingCart, Loader2, AlertCircle } from 'lucide-react';
 import { CheckoutModal } from '@/components/pos/checkout-modal';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 export default function POSPage() {
     const router = useRouter();
@@ -16,16 +19,37 @@ export default function POSPage() {
     const [showCheckout, setShowCheckout] = useState(false);
     const { items, addToCart, removeFromCart, updateQuantity, totalAmount } = useCartStore();
     const [activeCategory, setActiveCategory] = useState('全部');
+    const { user, selectedStoreId } = useAuthStore();
+
+    // 使用選擇的店鋪ID,如果沒有則使用第一個店鋪
+    const storeId = selectedStoreId || user?.stores?.[0]?.id;
+
+    // 注意:移除了自動跳轉到select-store的邏輯
+    // 因為這會導致頁面在select-store和pos之間無限循環
+
+    // Fetch Products
+    const { data: products = [], isLoading, error, refetch } = useQuery({
+        queryKey: ['products', storeId],
+        queryFn: () => {
+            if (!storeId) return [];
+            return productApi.getAll(storeId)
+        },
+        enabled: !!storeId,
+        staleTime: 1000 * 60 * 5, // 5 minutes
+    });
 
     useEffect(() => {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setMounted(true);
     }, []);
 
-    const categories = ['全部', ...Array.from(new Set(MOCK_PRODUCTS.map((p) => p.category)))];
+    const categories = ['全部', ...Array.from(new Set(products.map((p: Product) => p.category || '未分類')))];
 
     const filteredProducts = activeCategory === '全部'
-        ? MOCK_PRODUCTS
-        : MOCK_PRODUCTS.filter((p) => p.category === activeCategory);
+        ? products
+        : products.filter((p: Product) => (p.category || '未分類') === activeCategory);
+
+    if (!mounted) return null;
 
     return (
         <div className="flex w-full h-full">
@@ -50,28 +74,56 @@ export default function POSPage() {
 
                 {/* Product Grid */}
                 <ScrollArea className="flex-1 p-4">
-                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                        {filteredProducts.map((product) => (
-                            <Card
-                                key={product.id}
-                                className="cursor-pointer hover:shadow-md transition-shadow active:scale-[0.98] border-slate-200"
-                                onClick={() => addToCart(product)}
-                            >
-                                <CardContent className="p-4 flex flex-col gap-2 h-full justify-between">
-                                    <div className="w-full aspect-square bg-slate-100 rounded-md mb-2 flex items-center justify-center text-slate-300">
-                                        {/* Placeholder for image */}
-                                        Img
-                                    </div>
-                                    <div>
-                                        <h3 className="font-medium text-slate-900 line-clamp-1">{product.name}</h3>
-                                        <div className="text-[#D4AF37] font-bold mt-1">
-                                            ${product.price}
+                    {isLoading ? (
+                        <div className="h-full flex flex-col items-center justify-center text-slate-400">
+                            <Loader2 className="w-8 h-8 animate-spin mb-2" />
+                            <p>載入商品中...</p>
+                        </div>
+                    ) : error ? (
+                        <div className="p-4">
+                            <Alert variant="destructive">
+                                <AlertCircle className="h-4 w-4" />
+                                <AlertTitle>無法載入商品</AlertTitle>
+                                <AlertDescription>
+                                    請檢查網路連線或後端伺服器狀態。
+                                    <Button variant="outline" size="sm" onClick={() => refetch()} className="mt-2 text-black bg-white">重試</Button>
+                                </AlertDescription>
+                            </Alert>
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                            {filteredProducts.map((product) => (
+                                <Card
+                                    key={product.id}
+                                    className="cursor-pointer hover:shadow-md transition-shadow active:scale-[0.98] border-slate-200"
+                                    onClick={() => addToCart({
+                                        id: product.id.toString(),
+                                        name: product.name,
+                                        price: product.price
+                                    }, 1)}
+                                >
+                                    <CardContent className="p-4 flex flex-col gap-2 h-full justify-between">
+                                        <div className="w-full aspect-square bg-slate-100 rounded-md mb-2 flex items-center justify-center text-slate-300 relative overflow-hidden">
+                                            {/* Placeholder or Image */}
+                                            {product.image ? (
+                                                <img src={product.image} alt={product.name} className="object-cover w-full h-full" />
+                                            ) : (
+                                                <span className="text-4xl text-slate-200 font-bold select-none">
+                                                    {product.name.charAt(0)}
+                                                </span>
+                                            )}
                                         </div>
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        ))}
-                    </div>
+                                        <div>
+                                            <h3 className="font-medium text-slate-900 line-clamp-1">{product.name}</h3>
+                                            <div className="text-[#D4AF37] font-bold mt-1">
+                                                ${product.price}
+                                            </div>
+                                        </div>
+                                    </CardContent>
+                                </Card>
+                            ))}
+                        </div>
+                    )}
                 </ScrollArea>
             </div>
 
@@ -79,7 +131,7 @@ export default function POSPage() {
             <div className="w-[350px] lg:w-[400px] flex flex-col bg-white shadow-xl z-40">
                 <div className="h-16 border-b border-slate-200 flex items-center px-6 justify-between shrink-0">
                     <h2 className="font-bold text-lg text-slate-900">購物車</h2>
-                    <span className="text-sm text-slate-500">{mounted ? items.length : 0} 項目</span>
+                    <span className="text-sm text-slate-500">{items.length} 項目</span>
                 </div>
 
                 <ScrollArea className="flex-1 p-4">
@@ -123,7 +175,7 @@ export default function POSPage() {
                     <div className="flex justify-between items-end">
                         <span className="text-slate-600">總金額</span>
                         <span className="text-3xl font-bold text-slate-900 font-mono tracking-tight">
-                            ${mounted ? totalAmount() : 0}
+                            ${totalAmount()}
                         </span>
                     </div>
 

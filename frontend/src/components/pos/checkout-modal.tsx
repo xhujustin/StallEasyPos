@@ -6,6 +6,9 @@ import { useState, useEffect } from 'react';
 import { CheckCircle } from 'lucide-react';
 import { Dialog, DialogContent, DialogOverlay, DialogTitle } from '@/components/ui/dialog';
 
+import { orderApi, OrderCreate, OrderItemCreate, PaymentMethod, OrderSource } from '@/lib/api/orders';
+import { Loader2 } from 'lucide-react';
+
 interface CheckoutModalProps {
     open: boolean;
     onClose: () => void;
@@ -16,6 +19,7 @@ export function CheckoutModal({ open, onClose }: CheckoutModalProps) {
     const total = totalAmount();
     const [cashReceived, setCashReceived] = useState('');
     const [isCompleted, setIsCompleted] = useState(false);
+    const [isLoading, setIsLoading] = useState(false);
     const [change, setChange] = useState(0);
 
     const handleNumberClick = (num: string) => {
@@ -34,25 +38,51 @@ export function CheckoutModal({ open, onClose }: CheckoutModalProps) {
         setCashReceived(total.toString());
     };
 
-    const handleCheckout = () => {
+    const handleCheckout = async () => {
         const received = parseInt(cashReceived) || 0;
         if (received >= total) {
-            setChange(received - total);
-            setIsCompleted(true);
-            clearCart();
+            setIsLoading(true);
+            try {
+                // Prepare payload
+                const orderData: OrderCreate = {
+                    idempotency_key: crypto.randomUUID(),
+                    total_amount: total,
+                    payment_method: PaymentMethod.CASH,
+                    source: OrderSource.POS,
+                    items: items.map(item => ({
+                        product_id: parseInt(item.id), // items.id is string
+                        quantity: item.quantity,
+                        note: item.note
+                    }))
+                };
+
+                // Call API
+                await orderApi.create(orderData);
+
+                // Success UI
+                setChange(received - total);
+                setIsCompleted(true);
+                clearCart();
+            } catch (error) {
+                console.error("Checkout failed:", error);
+                alert("結帳失敗，請檢查網路或後端狀態");
+            } finally {
+                setIsLoading(false);
+            }
         }
     };
 
     const handleClose = () => {
         setCashReceived('');
         setIsCompleted(false);
+        setIsLoading(false);
         setChange(0);
         onClose();
     };
 
     // Keyboard support
     useEffect(() => {
-        if (!open || isCompleted) return;
+        if (!open || isCompleted || isLoading) return;
 
         const handleKeyDown = (e: KeyboardEvent) => {
             // Prevent default for number keys and special keys
@@ -78,7 +108,7 @@ export function CheckoutModal({ open, onClose }: CheckoutModalProps) {
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [open, isCompleted, cashReceived, total]);
+    }, [open, isCompleted, isLoading, cashReceived, total]);
 
     if (isCompleted) {
         return (
@@ -93,7 +123,7 @@ export function CheckoutModal({ open, onClose }: CheckoutModalProps) {
 
                         <div className="space-y-1">
                             <h2 className="text-2xl font-bold text-slate-900">交易完成</h2>
-                            <p className="text-slate-500">Receipt printed successfully</p>
+                            <p className="text-slate-500">Order created successfully</p>
                         </div>
 
                         <div className="w-full bg-slate-50 p-4 rounded-lg border border-slate-100 space-y-2">
@@ -110,6 +140,19 @@ export function CheckoutModal({ open, onClose }: CheckoutModalProps) {
                             下一位
                         </Button>
                     </div>
+                </DialogContent>
+            </Dialog>
+        )
+    }
+
+    if (isLoading) {
+        return (
+            <Dialog open={open} onOpenChange={() => { }}>
+                <DialogOverlay className="bg-black/50 backdrop-blur-sm" />
+                <DialogContent className="sm:max-w-sm bg-white border-0 shadow-xl flex flex-col items-center justify-center py-12">
+                    <DialogTitle className="sr-only">處理中</DialogTitle>
+                    <Loader2 className="w-12 h-12 animate-spin text-[#D4AF37] mb-4" />
+                    <p className="text-lg font-medium text-slate-700">正在建立訂單...</p>
                 </DialogContent>
             </Dialog>
         )
@@ -225,9 +268,9 @@ export function CheckoutModal({ open, onClose }: CheckoutModalProps) {
                             <Button
                                 className="h-16 text-xl font-bold bg-[#D4AF37] hover:bg-[#C5A028] text-white shadow-md transition-all active:scale-95"
                                 onClick={handleCheckout}
-                                disabled={(parseInt(cashReceived) || 0) < total}
+                                disabled={(parseInt(cashReceived) || 0) < total || isLoading}
                             >
-                                結帳 (Enter)
+                                {isLoading ? '處理中...' : '結帳 (Enter)'}
                             </Button>
                         </div>
                     </div>
