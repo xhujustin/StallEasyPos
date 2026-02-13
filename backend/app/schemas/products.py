@@ -15,6 +15,7 @@ class ProductUpdate(BaseModel):
     category: Optional[str] = None
     is_active: Optional[bool] = None
     attributes: Optional[Dict[str, Any]] = None
+    image_url: Optional[str] = None
 
 class ProductOut(BaseModel):
     id: int
@@ -25,5 +26,6 @@ class ProductOut(BaseModel):
     category: Optional[str]
     is_active: bool
     attributes: Optional[Dict[str, Any]]
+    image_url: Optional[str]
     
     model_config = ConfigDict(from_attributes=True)

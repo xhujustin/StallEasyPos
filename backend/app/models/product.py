@@ -15,6 +15,7 @@ class Product(Base):
     cost: Mapped[Optional[float]] = mapped_column(Numeric(10, 2), nullable=True)
     category: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     attributes: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    image_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
     
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

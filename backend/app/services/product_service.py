@@ -38,7 +38,7 @@ class ProductService:
         await StoreService.get_store_if_authorized(db, store_id, user_id)
         
         result = await db.execute(
-            select(Product).where(Product.store_id == store_id, Product.is_active == True)
+            select(Product).where(Product.store_id == store_id)
         )
         return result.scalars().all()
 
@@ -61,3 +61,32 @@ class ProductService:
         await db.commit()
         await db.refresh(product)
         return product
+
+    @staticmethod
+    async def get_product(
+        db: AsyncSession, product_id: int, store_id: int, user_id: int
+    ) -> Product:
+        """取得單一商品"""
+        # 驗證權限
+        await StoreService.get_store_if_authorized(db, store_id, user_id)
+        
+        product = await db.get(Product, product_id)
+        if not product or product.store_id != store_id:
+            raise HTTPException(status_code=404, detail="Product not found")
+        
+        return product
+
+    @staticmethod
+    async def delete_product(
+        db: AsyncSession, product_id: int, store_id: int, user_id: int
+    ) -> None:
+        """刪除商品"""
+        # 驗證權限
+        await StoreService.get_store_if_authorized(db, store_id, user_id)
+        
+        product = await db.get(Product, product_id)
+        if not product or product.store_id != store_id:
+            raise HTTPException(status_code=404, detail="Product not found")
+        
+        await db.delete(product)
+        await db.commit()

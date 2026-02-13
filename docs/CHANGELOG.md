@@ -1,5 +1,73 @@
 # Frontend Changelog
 
+## 2026-02-13
+
+### 新增功能 - 商品管理系統
+- **資料庫設計**
+  - 新增7個資料表：categories(分類)、materials(耗材)、product_attributes(商品屬性)、product_attribute_options(屬性選項)、option_materials(選項耗材關聯)、store_settings(店鋪設定)
+  - products表新增image_url欄位,移除舊的attributes JSON欄位
+  - 支援複雜的商品屬性和耗材管理系統
+
+- **後端API**
+  - Categories API：完整的分類CRUD操作
+  - Materials API：耗材管理、庫存更新、低庫存查詢
+  - 建立CategoryService和MaterialService
+  - API測試驗證通過,正確處理中文字元
+
+- **前端實作**
+  - 商品管理主頁面：商品列表、搜尋、分類篩選、狀態篩選
+  - API客戶端：categories.ts、materials.ts (TypeScript型別安全)
+  - 管理分類按鈕、新增商品按鈕
+
+- **Admin Layout改進**
+  - 新增店鋪下拉選單：直接在導航欄切換店鋪
+  - 顯示當前店鋪資訊
+  - 優化UI：移除「切換店鋪」按鈕,簡化介面
+  - 標籤樣式改進：黑色粗體、適當間距
+
+### Bug修復
+- 修復商品管理頁面跳轉問題
+  - 加入mounted狀態檢查避免hydration問題
+  - 修復API調用方法名稱(getProducts → getAll)
+- 修復「管理店鋪」按鈕邏輯
+  - 未選擇店鋪時自動選擇第一個店鋪
+  - 避免進入管理後台時selectedStoreId為null
+
+### 測試資料
+- 建立seed_product_management.py腳本
+  - 3個分類：飲料、小吃、主食
+  - 9種耗材：茶葉、珍珠、杯子(大/中/小)、冰塊、糖、雞排、薯條
+
+### 檔案變更
+**後端**:
+- `backend/migrations/versions/002_product_management.py`: 新增資料庫遷移
+- `backend/app/models/category.py`: 新增
+- `backend/app/models/material.py`: 新增
+- `backend/app/models/product_attribute.py`: 新增
+- `backend/app/models/store_setting.py`: 新增
+- `backend/app/models/product.py`: 修改(新增image_url)
+- `backend/app/schemas/categories.py`: 新增
+- `backend/app/schemas/materials.py`: 新增
+- `backend/app/schemas/product_attributes.py`: 新增
+- `backend/app/schemas/products.py`: 修改
+- `backend/app/services/category_service.py`: 新增
+- `backend/app/services/material_service.py`: 新增
+- `backend/app/api/v1/endpoints/categories.py`: 新增
+- `backend/app/api/v1/endpoints/materials.py`: 新增
+- `backend/app/api/v1/api.py`: 修改(註冊新路由)
+- `backend/app/seed_product_management.py`: 新增
+- `backend/migrate_db.bat`: 新增
+
+**前端**:
+- `frontend/src/lib/api/categories.ts`: 新增
+- `frontend/src/lib/api/materials.ts`: 新增
+- `frontend/src/app/(admin)/admin/products/page.tsx`: 修改
+- `frontend/src/app/(admin)/layout.tsx`: 修改(店鋪下拉選單)
+- `frontend/src/app/(admin)/layout.module.css`: 修改
+- `frontend/src/app/(public)/select-store/page.tsx`: 修改(管理店鋪按鈕邏輯)
+
+---
+
 ## 2026-02-12
 
 ### 新增功能

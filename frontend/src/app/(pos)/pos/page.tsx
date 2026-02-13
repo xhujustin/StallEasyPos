@@ -45,9 +45,10 @@ export default function POSPage() {
 
     const categories = ['全部', ...Array.from(new Set(products.map((p: Product) => p.category || '未分類')))];
 
-    const filteredProducts = activeCategory === '全部'
+    const filteredProducts = (activeCategory === '全部'
         ? products
-        : products.filter((p: Product) => (p.category || '未分類') === activeCategory);
+        : products.filter((p: Product) => (p.category || '未分類') === activeCategory)
+    ).filter((p: Product) => p.is_active); // 只顯示啟用的商品
 
     if (!mounted) return null;
 
@@ -105,8 +106,8 @@ export default function POSPage() {
                                     <CardContent className="p-4 flex flex-col gap-2 h-full justify-between">
                                         <div className="w-full aspect-square bg-slate-100 rounded-md mb-2 flex items-center justify-center text-slate-300 relative overflow-hidden">
                                             {/* Placeholder or Image */}
-                                            {product.image ? (
-                                                <img src={product.image} alt={product.name} className="object-cover w-full h-full" />
+                                            {product.image_url ? (
+                                                <img src={product.image_url} alt={product.name} className="object-cover w-full h-full" />
                                             ) : (
                                                 <span className="text-4xl text-slate-200 font-bold select-none">
                                                     {product.name.charAt(0)}

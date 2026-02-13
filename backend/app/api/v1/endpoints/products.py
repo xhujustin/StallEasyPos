@@ -46,3 +46,29 @@ async def update_product(
     """
     product = await ProductService.update_product(db, product_id, product_in, current_user_id)
     return ResponseBase(data=product)
+
+@router.get("/{product_id}", response_model=ResponseBase[ProductOut])
+async def get_product(
+    product_id: int,
+    store_id: Annotated[int, Query()],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user_id: Annotated[int, Depends(get_current_user_id)]
+):
+    """
+    取得單一商品
+    """
+    product = await ProductService.get_product(db, product_id, store_id, current_user_id)
+    return ResponseBase(data=product)
+
+@router.delete("/{product_id}", response_model=ResponseBase[bool])
+async def delete_product(
+    product_id: int,
+    store_id: Annotated[int, Query()],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user_id: Annotated[int, Depends(get_current_user_id)]
+):
+    """
+    刪除商品
+    """
+    await ProductService.delete_product(db, product_id, store_id, current_user_id)
+    return ResponseBase(data=True)

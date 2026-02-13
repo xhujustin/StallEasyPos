@@ -52,7 +52,12 @@ export default function SelectStorePage() {
     };
 
     const handleManageStores = () => {
-        router.push('/admin');
+        // 如果還沒選擇店鋪,自動選擇第一個店鋪
+        if (!selectedStoreId && user.stores.length > 0) {
+            const firstStore = user.stores[0];
+            setSelectedStore(firstStore.id);
+        }
+        router.push('/admin/dashboard');
     };
 
     // 判斷使用者是否有owner角色
