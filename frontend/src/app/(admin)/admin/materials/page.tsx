@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { materialApi, Material, MaterialCreate, MaterialUpdate } from '@/lib/api/materials';
-import { Search, Plus, Edit, Trash2, AlertTriangle, ArrowLeft } from 'lucide-react';
+import { Search, Plus, Edit, Trash2, AlertTriangle, ArrowLeft, Calculator } from 'lucide-react';
 
 export default function MaterialsPage() {
     const router = useRouter();
@@ -90,17 +90,23 @@ export default function MaterialsPage() {
         }
     };
 
-    const handleDeleteMaterial = async (materialId: number) => {
-        if (!selectedStoreId) return;
+    const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+    const [materialToDelete, setMaterialToDelete] = useState<number | null>(null);
 
-        if (!confirm('確定要刪除這個耗材嗎?')) {
-            return;
-        }
+    const handleDeleteClick = (materialId: number) => {
+        setMaterialToDelete(materialId);
+        setShowDeleteDialog(true);
+    };
+
+    const confirmDelete = async () => {
+        if (!materialToDelete || !selectedStoreId) return;
 
         try {
-            await materialApi.deleteMaterial(materialId, selectedStoreId);
+            await materialApi.deleteMaterial(materialToDelete, selectedStoreId);
             alert('耗材刪除成功!');
             loadMaterials();
+            setShowDeleteDialog(false);
+            setMaterialToDelete(null);
         } catch (error) {
             console.error('刪除耗材失敗:', error);
             alert('刪除耗材失敗,請稍後再試');
@@ -109,16 +115,22 @@ export default function MaterialsPage() {
 
     const openEditDialog = (material: Material) => {
         setSelectedMaterial(material);
-        setFormData({
-            store_id: material.store_id,
-            name: material.name,
-            unit: material.unit,
-            stock_quantity: material.stock_quantity,
-            unit_cost: material.unit_cost,
-            low_stock_threshold: material.low_stock_threshold,
-        });
         setShowEditDialog(true);
     };
+
+    // 當selectedMaterial改變時更新表單數據 (用於編輯)
+    useEffect(() => {
+        if (selectedMaterial && showEditDialog) {
+            setFormData({
+                store_id: selectedMaterial.store_id,
+                name: selectedMaterial.name,
+                unit: selectedMaterial.unit,
+                stock_quantity: selectedMaterial.stock_quantity,
+                unit_cost: selectedMaterial.unit_cost,
+                low_stock_threshold: selectedMaterial.low_stock_threshold,
+            });
+        }
+    }, [selectedMaterial, showEditDialog]);
 
     const openStockDialog = (material: Material) => {
         setSelectedMaterial(material);
@@ -206,7 +218,7 @@ export default function MaterialsPage() {
                         ) : (
                             filteredMaterials.map((material) => {
                                 const isLowStock = material.low_stock_threshold !== null &&
-                                    material.stock_quantity <= material.low_stock_threshold;
+                                    Number(material.stock_quantity) <= Number(material.low_stock_threshold);
                                 return (
                                     <tr key={material.id} className="hover:bg-gray-50">
                                         <td className="px-6 py-4 whitespace-nowrap">
@@ -220,11 +232,11 @@ export default function MaterialsPage() {
                                                 onClick={() => openStockDialog(material)}
                                                 className={`text-sm font-medium ${isLowStock ? 'text-red-600' : 'text-gray-900'} hover:underline`}
                                             >
-                                                {material.stock_quantity}
+                                                {parseFloat(Number(material.stock_quantity).toFixed(4))}
                                             </button>
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap">
-                                            <div className="text-sm text-gray-900">${material.unit_cost}</div>
+                                            <div className="text-sm text-gray-900">${parseFloat(Number(material.unit_cost).toFixed(4))}</div>
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap">
                                             <div className="text-sm text-gray-500">
@@ -241,13 +253,20 @@ export default function MaterialsPage() {
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                             <button
+                                                onClick={() => openStockDialog(material)}
+                                                className="text-green-600 hover:text-green-900 mr-4"
+                                                title="修改庫存"
+                                            >
+                                                <Calculator size={18} />
+                                            </button>
+                                            <button
                                                 onClick={() => openEditDialog(material)}
                                                 className="text-blue-600 hover:text-blue-900 mr-4"
                                             >
                                                 <Edit size={18} />
                                             </button>
                                             <button
-                                                onClick={() => handleDeleteMaterial(material.id)}
+                                                onClick={() => handleDeleteClick(material.id)}
                                                 className="text-red-600 hover:text-red-900"
                                             >
                                                 <Trash2 size={18} />
@@ -307,7 +326,7 @@ export default function MaterialsPage() {
                                         type="number"
                                         required
                                         min="0"
-                                        step="0.01"
+                                        step="0.0001"
                                         value={formData.unit_cost}
                                         onChange={(e) => setFormData({ ...formData, unit_cost: parseFloat(e.target.value) })}
                                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -381,7 +400,7 @@ export default function MaterialsPage() {
                                         type="number"
                                         required
                                         min="0"
-                                        step="0.01"
+                                        step="0.0001"
                                         value={formData.unit_cost}
                                         onChange={(e) => setFormData({ ...formData, unit_cost: parseFloat(e.target.value) })}
                                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -435,6 +454,30 @@ export default function MaterialsPage() {
                     storeId={selectedStoreId!}
                 />
             )}
+
+            {/* Delete Confirmation Dialog */}
+            {showDeleteDialog && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                    <div className="bg-white rounded-lg p-6 w-full max-w-sm">
+                        <h2 className="text-xl font-bold mb-4">確認刪除</h2>
+                        <p className="text-gray-600 mb-6">確定要刪除這個耗材嗎? 此操作無法撤銷。</p>
+                        <div className="flex gap-3">
+                            <button
+                                onClick={() => setShowDeleteDialog(false)}
+                                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+                            >
+                                取消
+                            </button>
+                            <button
+                                onClick={confirmDelete}
+                                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+                            >
+                                刪除
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
@@ -452,7 +495,7 @@ function StockUpdateDialog({
     storeId: number;
 }) {
     const [inputValue, setInputValue] = useState('0');
-    const [mode, setMode] = useState<'set' | 'add' | 'subtract'>('set');
+    const [mode, setMode] = useState<'set' | 'add' | 'subtract'>('add');
 
     // 當模式改變時重置輸入值
     useEffect(() => {
@@ -481,9 +524,9 @@ function StockUpdateDialog({
 
         let newStockQuantity = value;
         if (mode === 'add') {
-            newStockQuantity = material.stock_quantity + value;
+            newStockQuantity = Number(material.stock_quantity) + value;
         } else if (mode === 'subtract') {
-            newStockQuantity = material.stock_quantity - value;
+            newStockQuantity = Number(material.stock_quantity) - value;
             if (newStockQuantity < 0) {
                 alert('庫存數量不能為負數');
                 return;
@@ -510,18 +553,11 @@ function StockUpdateDialog({
             <div className="bg-white rounded-lg p-6 w-full max-w-md">
                 <h2 className="text-xl font-bold mb-2">更新庫存</h2>
                 <p className="text-sm text-gray-500 mb-4">
-                    {material.name} - 當前庫存: {material.stock_quantity} {material.unit}
+                    {material.name} - 當前庫存: {parseFloat(Number(material.stock_quantity).toFixed(4))} {material.unit}
                 </p>
 
                 {/* Mode Selection */}
                 <div className="flex gap-2 mb-4">
-                    <button
-                        onClick={() => setMode('set')}
-                        className={`flex-1 px-3 py-2 rounded-lg ${mode === 'set' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700'
-                            }`}
-                    >
-                        設定
-                    </button>
                     <button
                         onClick={() => setMode('add')}
                         className={`flex-1 px-3 py-2 rounded-lg ${mode === 'add' ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-700'
@@ -536,6 +572,13 @@ function StockUpdateDialog({
                     >
                         減少
                     </button>
+                    <button
+                        onClick={() => setMode('set')}
+                        className={`flex-1 px-3 py-2 rounded-lg ${mode === 'set' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700'
+                            }`}
+                    >
+                        設定
+                    </button>
                 </div>
 
                 {/* Display */}
@@ -547,7 +590,7 @@ function StockUpdateDialog({
                     </div>
                     {mode !== 'set' && (
                         <div className="text-right text-sm text-gray-500 mt-1">
-                            結果: {mode === 'add' ? Number(material.stock_quantity) + Number(inputValue || '0') : Number(material.stock_quantity) - Number(inputValue || '0')} {material.unit}
+                            結果: {parseFloat((mode === 'add' ? Number(material.stock_quantity) + Number(inputValue || '0') : Number(material.stock_quantity) - Number(inputValue || '0')).toFixed(4))} {material.unit}
                         </div>
                     )}
                 </div>

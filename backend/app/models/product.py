@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional, Any
 from sqlalchemy import BigInteger, Text, Numeric, Boolean, DateTime, func, ForeignKey, Index, Identity
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import JSONB
 from app.models.base import Base
 
@@ -20,6 +20,9 @@ class Product(Base):
     
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    # Relationships
+    materials: Mapped[list["ProductMaterial"]] = relationship("ProductMaterial", back_populates="product", cascade="all, delete-orphan")
 
     __table_args__ = (
         Index("idx_products_store_category", "store_id", "category"),

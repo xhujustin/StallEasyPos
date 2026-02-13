@@ -89,6 +89,28 @@ export default function ProductsPage() {
         }
     };
 
+    const calculateMetrics = (product: Product) => {
+        let cost = product.cost || 0;
+
+        // 如果有配方，優先使用配方計算成本
+        if (product.materials && product.materials.length > 0) {
+            const recipeCost = product.materials.reduce((sum, pm) => {
+                const unitCost = pm.material?.unit_cost || 0;
+                return sum + (pm.quantity * unitCost);
+            }, 0);
+
+            if (recipeCost > 0) {
+                cost = recipeCost;
+            }
+        }
+
+        const price = product.price || 0;
+        const profit = price - cost;
+        const margin = price > 0 ? (profit / price) * 100 : 0;
+
+        return { cost, margin };
+    };
+
     return (
         <div className="min-h-screen bg-gray-50 p-6">
             {/* Header */}
@@ -181,6 +203,9 @@ export default function ProductsPage() {
                                 成本
                             </th>
                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                利潤率
+                            </th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                 狀態
                             </th>
                             <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -198,49 +223,60 @@ export default function ProductsPage() {
                                 </td>
                             </tr>
                         ) : (
-                            filteredProducts.map((product) => (
-                                <tr key={product.id} className="hover:bg-gray-50">
-                                    <td className="px-6 py-4 whitespace-nowrap">
-                                        <div className="text-sm font-medium text-gray-900">{product.name}</div>
-                                    </td>
-                                    <td className="px-6 py-4 whitespace-nowrap">
-                                        <div className="text-sm text-gray-500">{product.category || '-'}</div>
-                                    </td>
-                                    <td className="px-6 py-4 whitespace-nowrap">
-                                        <div className="text-sm text-gray-900">${product.price}</div>
-                                    </td>
-                                    <td className="px-6 py-4 whitespace-nowrap">
-                                        <div className="text-sm text-gray-500">{product.cost ? `$${product.cost}` : '-'}</div>
-                                    </td>
-                                    <td className="px-6 py-4 whitespace-nowrap">
-                                        {product.is_active ? (
-                                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                                                <Power size={12} />
-                                                啟用
+                            filteredProducts.map((product) => {
+                                const { cost, margin } = calculateMetrics(product);
+                                return (
+                                    <tr key={product.id} className="hover:bg-gray-50">
+                                        <td className="px-6 py-4 whitespace-nowrap">
+                                            <div className="text-sm font-medium text-gray-900">{product.name}</div>
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap">
+                                            <div className="text-sm text-gray-500">{product.category || '-'}</div>
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap">
+                                            <div className="text-sm text-gray-900">${product.price}</div>
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap">
+                                            <div className="text-sm text-gray-500">${cost.toFixed(2)}</div>
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap">
+                                            <span className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${margin >= 30 ? 'bg-green-100 text-green-800' :
+                                                    margin > 0 ? 'bg-yellow-100 text-yellow-800' :
+                                                        'bg-red-100 text-red-800'
+                                                }`}>
+                                                {margin.toFixed(1)}%
                                             </span>
-                                        ) : (
-                                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-                                                <PowerOff size={12} />
-                                                停用
-                                            </span>
-                                        )}
-                                    </td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                        <button
-                                            onClick={() => router.push(`/admin/products/${product.id}/edit`)}
-                                            className="text-blue-600 hover:text-blue-900 mr-4"
-                                        >
-                                            <Edit size={18} />
-                                        </button>
-                                        <button
-                                            onClick={() => handleDeleteProduct(product.id)}
-                                            className="text-red-600 hover:text-red-900"
-                                        >
-                                            <Trash2 size={18} />
-                                        </button>
-                                    </td>
-                                </tr>
-                            ))
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap">
+                                            {product.is_active ? (
+                                                <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                                    <Power size={12} />
+                                                    啟用
+                                                </span>
+                                            ) : (
+                                                <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                                                    <PowerOff size={12} />
+                                                    停用
+                                                </span>
+                                            )}
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                            <button
+                                                onClick={() => router.push(`/admin/products/${product.id}/edit`)}
+                                                className="text-blue-600 hover:text-blue-900 mr-4"
+                                            >
+                                                <Edit size={18} />
+                                            </button>
+                                            <button
+                                                onClick={() => handleDeleteProduct(product.id)}
+                                                className="text-red-600 hover:text-red-900"
+                                            >
+                                                <Trash2 size={18} />
+                                            </button>
+                                        </td>
+                                    </tr>
+                                )
+                            })
                         )}
                     </tbody>
                 </table>

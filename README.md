@@ -66,10 +66,19 @@ npm run dev
 
 # 啟動開發伺服器 (Backend)
 cd backend
+# 啟動開發伺服器 (Frontend)
+npm run dev
+
+# 啟動開發伺服器 (Backend)
+cd backend
 .\backend.bat
+
+# 使用批次檔快速啟動
+.\start_dev.bat      (僅本機)
+.\start_dev_lan.bat  (支援手機平板連線)
 ```
 
-訪問 http://localhost:3000 開始使用
+訪問 http://localhost:3000 (本機) 或 http://[電腦IP]:3000 (手機平板) 開始使用
 
 ### 預設帳號
 
@@ -112,6 +121,7 @@ StallEasyPos-V1.0.0/
 │   │   └── main.py         # FastAPI 入口文件
 │   ├── .env                # 環境變數設定
 │   ├── alembic/            # 資料庫遷移工具
+│   ├── scripts/            # 維護與工具腳本 (New)
 │   ├── backend.bat         # 啟動腳本 (Auto venv & run)
 │   ├── setup_backend.bat   # 環境安裝與初始化腳本
 │   └── requirements.txt    # Python 依賴清單
@@ -120,6 +130,40 @@ StallEasyPos-V1.0.0/
 │   ├── architecture/       # 系統架構圖與設計說明
 │   └── legal/              # 稅務與法規合規文件
 └── README.md
+```
+
+## 實用腳本
+
+所有後端腳本請在 `backend/` 目錄下執行：
+
+### 資料庫管理
+```bash
+# 初始化資料庫表格 (backend/scripts/create_tables_script.py)
+python -m scripts.create_tables_script
+
+# 重置資料庫 (backend/scripts/reset_db.py)
+python -m scripts.reset_db
+
+# 資料庫遷移 (Alembic)
+.\migrate_db.bat
+```
+
+### 資料填充 (Seeds)
+```bash
+# 填充商品與分類初始化資料
+python -m app.seed_product_management
+
+# 填充基本商品資料
+python -m app.seed_products
+```
+
+### 維護工具
+```bash
+# 更新耗材精度 (遷移舊資料)
+python -m scripts.update_material_precision
+
+# 檢查 API 回應
+python -m scripts.check_api_response
 ```
 
 ## 技術棧
@@ -175,7 +219,8 @@ StallEasyPos-V1.0.0/
 - ✅ 多店管理與店鋪選擇功能
 - ✅ 商品管理系統基礎架構 (分類、耗材、屬性)
 - ✅ 商品編輯與管理功能 (新增、編輯、刪除、分類管理)
-- 🚧 耗材管理系統 (基礎功能完成,Bug修復中)
+- ✅ 耗材管理系統 (列表、編輯、庫存數字鍵盤、低庫存警告、4位小數精度)
+- ✅ 商品配方與成本計算 (關聯耗材、自動計算成本、4位小數精度)
 - ⏳ 電子發票整合 (規劃中)
 - ⏳ 外送平台整合 (規劃中)
 

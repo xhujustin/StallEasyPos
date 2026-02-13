@@ -79,6 +79,47 @@ CREATE INDEX idx_products_store ON products(store_id);
 CREATE INDEX idx_products_store_category ON products(store_id, category);
 ```
 
+### Categories
+```sql
+CREATE TABLE categories (
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  store_id BIGINT NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  description TEXT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(store_id, name)
+);
+```
+
+### Materials (High Precision)
+```sql
+CREATE TABLE materials (
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  store_id BIGINT NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  unit TEXT NOT NULL,
+  stock_quantity NUMERIC(10,4) NOT NULL DEFAULT 0, -- Precision 4 for micro amounts
+  unit_cost NUMERIC(10,4) NOT NULL DEFAULT 0,      -- Precision 4
+  low_stock_threshold NUMERIC(10,4) NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(store_id, name)
+);
+```
+
+### Product Materials (Recipe)
+```sql
+CREATE TABLE product_materials (
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  product_id BIGINT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  material_id BIGINT NOT NULL REFERENCES materials(id) ON DELETE RESTRICT,
+  quantity NUMERIC(10,4) NOT NULL,                 -- Recipe usage
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(product_id, material_id)
+);
+```
+
 ### Orders
 ```sql
 CREATE TABLE orders (

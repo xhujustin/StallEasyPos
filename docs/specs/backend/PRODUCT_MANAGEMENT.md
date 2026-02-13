@@ -413,9 +413,44 @@ alembic upgrade head
 - [x] 商品新增/編輯/刪除功能
 - [ ] 商品屬性系統UI
 - [ ] 圖片上傳功能
-- [/] 耗材管理頁面 (Bug修復中)
+- [x] 耗材管理頁面
 - [ ] 成本計算自動化
 - [ ] 庫存警告通知
+
+## 商品配方與成本結構 (2026/02 更新)
+
+### 新增資料表
+
+#### product_materials (商品配方)
+建立商品與耗材的直接關聯，用於計算基礎成本與扣庫存。
+
+```sql
+CREATE TABLE product_materials (
+    id SERIAL PRIMARY KEY,
+    product_id INTEGER NOT NULL REFERENCES products(id),
+    material_id INTEGER NOT NULL REFERENCES materials(id),
+    quantity DECIMAL(10, 4) NOT NULL, -- 支援4位小數
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(product_id, material_id)
+);
+```
+
+### 精度控制規範
+
+為支援微量耗材(如調味料、茶葉)，系統全面升級數值精度：
+
+- **耗材單價 (unit_cost)**: `DECIMAL(10, 4)` (例: $0.0050)
+- **庫存數量 (stock_quantity)**: `DECIMAL(10, 4)` (例: 0.0050 kg)
+- **配方用量 (quantity)**: `DECIMAL(10, 4)`
+
+**前端顯示規則**:
+- 輸入時允許 4 位小數。
+- 顯示時使用 `parseFloat(Number(value).toFixed(4))` 去除末尾多餘的零 (例: `0.5000` -> `0.5`, `0.0025` -> `0.0025`)。
+
+### 庫存預警邏輯
+
+當 `materials.stock_quantity <= materials.low_stock_threshold` 時觸發。
+*注意*: 必須使用數值比較 (`Number()`) 避免字串比對錯誤。
 
 ## 相關檔案
 
@@ -423,12 +458,17 @@ alembic upgrade head
 - `backend/migrations/versions/002_product_management.py`
 - `backend/app/models/category.py`
 - `backend/app/models/material.py`
+- `backend/app/models/product_material.py`
 - `backend/app/services/category_service.py`
 - `backend/app/services/material_service.py`
+- `backend/app/services/product_service.py`
 - `backend/app/api/v1/endpoints/categories.py`
 - `backend/app/api/v1/endpoints/materials.py`
+- `backend/app/api/v1/endpoints/products.py`
 
 **前端**:
 - `frontend/src/lib/api/categories.ts`
 - `frontend/src/lib/api/materials.ts`
+- `frontend/src/lib/api/products.ts`
 - `frontend/src/app/(admin)/admin/products/page.tsx`
+- `frontend/src/app/(admin)/admin/products/[id]/edit/page.tsx`

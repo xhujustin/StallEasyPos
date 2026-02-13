@@ -1,11 +1,24 @@
 import { apiClient, ResponseBase } from './client';
+import { Material } from './materials';
+
+export interface ProductMaterial {
+    id: number;
+    material_id: number;
+    quantity: number;
+    material?: Material;
+}
+
+export interface ProductMaterialCreate {
+    material_id: number;
+    quantity: number;
+}
 
 export interface Product {
     id: number;
     store_id: number;
     name: string;
     price: number;
-    cost?: number;
+    cost?: number; // 注意: 這個cost欄位通常是手動輸入的,我們可以用它來存儲自動計算的成本,或者作為覆蓋值
     category?: string;
     attributes?: Record<string, any>;
     is_active: boolean;
@@ -13,6 +26,7 @@ export interface Product {
     description?: string;
     created_at?: string;
     updated_at?: string;
+    materials?: ProductMaterial[];
 }
 
 export interface ProductCreate {
@@ -22,6 +36,7 @@ export interface ProductCreate {
     description?: string;
     is_active?: boolean;
     image_url?: string;
+    materials?: ProductMaterialCreate[];
 }
 
 export interface ProductUpdate {
@@ -31,6 +46,7 @@ export interface ProductUpdate {
     description?: string;
     is_active?: boolean;
     image_url?: string;
+    materials?: ProductMaterialCreate[];
 }
 
 export const productApi = {

@@ -12,9 +12,9 @@ class Material(Base):
     store_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("stores.id", ondelete="CASCADE"), nullable=False)
     name: Mapped[str] = mapped_column(Text, nullable=False)
     unit: Mapped[str] = mapped_column(Text, nullable=False)  # g, ml, 個, 包
-    stock_quantity: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False, server_default="0")
-    unit_cost: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False, server_default="0")
-    low_stock_threshold: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 2), nullable=True, server_default="0")
+    stock_quantity: Mapped[Decimal] = mapped_column(Numeric(10, 4), nullable=False, server_default="0")
+    unit_cost: Mapped[Decimal] = mapped_column(Numeric(10, 4), nullable=False, server_default="0")
+    low_stock_threshold: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 4), nullable=True, server_default="0")
     
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -18,11 +18,32 @@ export default function LoginPage() {
     const [loading, setLoading] = useState(false);
 
     const handlePinInput = (num: string) => {
-        if (pin.length < 6) {
+        if (pin.length < 8) { // Changed to 8 digits
             setPin((prev) => prev + num);
             setError('');
         }
     };
+
+    // Keyboard support
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key >= '0' && e.key <= '9') {
+                handlePinInput(e.key);
+            } else if (e.key === 'Backspace') {
+                handleBackspace();
+            } else if (e.key === 'Enter') {
+                // Prevent default form submission if any
+                e.preventDefault();
+                // Trigger login if PIN length > 3
+                if (pin.length >= 4) {
+                    handleLogin();
+                }
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [pin]);
 
     const handleClear = () => {
         setPin('');
