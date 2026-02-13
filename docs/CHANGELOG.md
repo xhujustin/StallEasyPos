@@ -1,5 +1,41 @@
 # Frontend Changelog
 
+## 2026-02-13 (下午) - 耗材管理系統基礎完成 & 商品管理功能完善
+
+### 新增功能 - 耗材管理
+- ✅ 耗材管理頁面 (`/admin/materials`)
+  - 耗材列表顯示與搜尋
+  - 新增/編輯/刪除耗材
+  - 低庫存警告標示
+- ✅ 數字鍵盤庫存更新功能
+  - 支援設定、增加、減少三種模式
+  - 自動計算預覽結果
+- ✅ 導航欄整合
+  - 添加「耗材管理」至左側選單
+
+### 待修復問題 (耗材管理)
+- 🐛 庫存更新「增加」模式報錯 (422 Error)
+- 🐛 編輯對話框欄位未正確預填
+- 🐛 刪除按鈕無反應
+
+### 新增功能 - 商品管理
+- ✅ 商品編輯頁面 (`/admin/products/[id]/edit`)
+- ✅ 商品刪除功能
+- ✅ 修復HTTP方法不匹配(PUT->PATCH)
+- ✅ 允許停用商品顯示于管理後台
+
+### 檔案變更
+**前端**:
+- `frontend/src/app/(admin)/admin/materials/page.tsx`
+- `frontend/src/lib/api/materials.ts`
+- `frontend/src/app/(admin)/layout.tsx`
+
+**後端**:
+- `backend/app/services/product_service.py` (新增get/delete方法)
+- `backend/app/api/v1/endpoints/products.py` (新增GET/DELETE端點)
+
+---
+
 ## 2026-02-13
 
 ### 新增功能 - 商品管理系統
