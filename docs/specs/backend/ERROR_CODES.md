@@ -23,11 +23,12 @@
 
 | 代碼 | 錯誤訊息 (Key) | 說明 |
 |---|---|---|
-| `1000` | `INTERNAL_SERVER_ERROR` | 系統內部發生未預期的錯誤，請聯繫管理員 |
+| `1000` | `INTERNAL_SERVER_ERROR` | 系統內部發生未預期的錯誤，請聯繫管理員 (已實作全域攔截確保回傳 CORS Header) |
 | `1001` | `INVALID_PARAMETERS` | 請求參數格式錯誤或缺少必填欄位 |
 | `1002` | `RESOURCE_NOT_FOUND` | 請求的資源不存在 (ID 無效) |
 | `1003` | `METHOD_NOT_ALLOWED` | 該資源不支援此 HTTP 方法 |
 | `1004` | `DB_OPERATION_FAILED` | 資料庫寫入或讀取失敗 |
+| `1005` | `DB_SYNC_ERROR` | 資料庫架構與程式碼不同步 (啟動時檢查) |
 
 ### 2xxx 認證與授權 (Auth Errors)
 

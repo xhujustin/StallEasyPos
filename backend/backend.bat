@@ -16,7 +16,7 @@ if %errorlevel% neq 0 (
 )
 
 :: 設定 venv 資料夾名稱
-set VENV_DIR=venv
+set VENV_DIR=.venv
 
 :: 檢查 venv 是否存在
 if not exist %VENV_DIR% (
@@ -44,6 +44,23 @@ if exist requirements.txt (
     pip install -r requirements.txt
 ) else (
     echo [WARNING] 找不到 requirements.txt，跳過依賴安裝。
+)
+
+:: 檢查並執行資料庫遷移
+if exist alembic.ini (
+    echo [INFO] 正在檢查並執行資料庫遷移...
+    alembic upgrade head
+)
+
+:: 執行資料庫同步檢查 (Double Check)
+if exist check_db.py (
+    echo [INFO] 正在進行資料庫同步安全性檢查...
+    python check_db.py
+    if %errorlevel% neq 0 (
+        echo [ERROR] 資料庫檢查失敗，請依指示修復後再啟動。
+        pause
+        exit /b 1
+    )
 )
 
 :: 啟動 Uvicorn

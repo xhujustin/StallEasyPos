@@ -1,15 +1,18 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
-import { Store, FileText, DollarSign, Settings, LogOut } from 'lucide-react';
+import { Store, FileText, DollarSign, Settings, LogOut, LayoutDashboard } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useCartStore } from '@/lib/store/cart-store';
+import { useAuthStore } from '@/lib/store/auth-store';
 import { SyncIndicator } from '@/components/pos/sync-indicator';
 import styles from './layout.module.css';
 
 export default function POSLayout({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();
+    const { user, selectedStoreId } = useAuthStore();
     const itemCount = useCartStore((state) => state.items.reduce((sum, item) => sum + item.quantity, 0));
 
     const navItems = [
@@ -19,10 +22,18 @@ export default function POSLayout({ children }: { children: React.ReactNode }) {
         { href: '/pos/settings', icon: Settings, label: '設定' },
     ];
 
+    // 權限檢查：只有 owner 或 manager 才能看到管理入口
+    const currentStore = user?.stores?.find((s) => s.id === selectedStoreId);
+    if (currentStore?.user_role === 'owner' || currentStore?.user_role === 'manager') {
+        navItems.push({ href: '/admin/dashboard', icon: LayoutDashboard, label: '管理店鋪' });
+    }
+
     return (
         <div className={styles.container}>
             <aside className={styles.sidebar}>
-                <div className={styles.logo}>S</div>
+                <div className={styles.logo}>
+                    <Image src="/icon.png" alt="Logo" width={64} height={64} className="rounded-md" />
+                </div>
 
                 <nav className={styles.nav}>
                     {navItems.map((item) => {

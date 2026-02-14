@@ -5,6 +5,9 @@ from sqlalchemy import text
 from app.core.database import SessionLocal
 from app.models.product import Product
 from app.models.store import Store
+# Import ProductMaterial to Ensure SQLAlchemy Registry Awareness
+from app.models.product_material import ProductMaterial
+from app.models.material import Material
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

@@ -26,6 +26,8 @@ async def init_db(db: AsyncSession) -> None:
             hashed_password=get_password_hash("password"),
         )
         db.add(admin_in)
+        await db.flush()
+        admin = admin_in
     else:
         logger.info("User admin already exists")
 
@@ -40,6 +42,8 @@ async def init_db(db: AsyncSession) -> None:
             hashed_password=get_password_hash("password"),
         )
         db.add(staff_in)
+        await db.flush()
+        staff = staff_in
     else:
         logger.info("User staff already exists")
 

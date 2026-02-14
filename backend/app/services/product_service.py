@@ -51,14 +51,7 @@ class ProductService:
         result = await db.execute(stmt)
         return result.scalars().first()
 
-    @staticmethod
-    async def get_store_products(
-        db: AsyncSession, store_id: int, user_id: int
-    ) -> List[Product]:
-        """取得店鋪商品列表"""
-        # 驗證權限 (讀取權限)
-        await StoreService.get_store_if_authorized(db, store_id, user_id)
-        
+
     @staticmethod
     async def get_store_products(
         db: AsyncSession, store_id: int, user_id: int

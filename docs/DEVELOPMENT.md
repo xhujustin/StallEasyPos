@@ -153,6 +153,18 @@ export const useStore = create(
 ### 4. 網路請求
 - Chrome DevTools > Network
 
+## 區域網路與平板開發
+
+### 1. 動態 API 與 IP 識別
+為了支援平板開發，`frontend/src/lib/api/client.ts` 會根據當前網址自動切換 API URL。
+- 訪問 `localhost:3000` -> API 使用 `localhost:8000`
+- 訪問 `192.168.x.x:3000` -> API 使用 `192.168.x.x:8000`
+
+### 2. CORS 除錯
+後端 `backend/app/main.py` 已配置 `allow_origin_regex` 以允許私有網路 IP。若連線失敗，請檢查：
+- 伺服器防火牆是否允許 3000 與 8000 埠。
+- 裝置與伺服器是否在同一區域網路內。
+
 ## 常見問題
 
 ### Q: 登入後跳轉錯誤？

@@ -3,7 +3,17 @@ import { useAuthStore } from '../store/auth-store';
 
 // Create Axios Instance
 // Default to localhost:8000 if env not set
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
+const getApiUrl = () => {
+    if (typeof window !== 'undefined') {
+        const protocol = window.location.protocol;
+        // Use the same hostname as the frontend, but port 8000 for backend
+        return `${protocol}//${window.location.hostname}:8000/api/v1`;
+    }
+    // Server-side (SSR) fallback
+    return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
+};
+
+const API_URL = getApiUrl();
 
 export const apiClient = axios.create({
     baseURL: API_URL,

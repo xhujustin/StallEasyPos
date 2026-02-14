@@ -137,8 +137,10 @@ export default function LoginPage() {
                             type="password"
                             value={pin}
                             readOnly
-                            className={styles.pinInput}
                             placeholder="••••••"
+                            className="text-center text-2xl tracking-widest font-mono h-14 bg-white/50 border-slate-200 focus:border-slate-400 focus:ring-slate-200 transition-all duration-300"
+                            autoComplete="off"
+                            suppressHydrationWarning
                         />
                     </div>
 

@@ -102,5 +102,22 @@ graph LR
     App1 --> DB[(Primary DB)]
     App1 --> Cache[(Redis Cache)]
     App1 --> Queue[(Job Queue)]
-    Queue --> Worker[Background Worker]
-```
+
+---
+
+## 5. 系統可靠性與防護 (System Reliability & Protection)
+
+為了提升系統穩定性並減少開發/維運時的誤判，系統內建以下防護機制：
+
+### 5.1 資料庫同步檢查 (Database Sync Check)
+- **機制**: 每次後端啟動時 (`backend.bat`)，會自動執行 `check_db.py`。
+- **功能**: 比對程式碼中的 Alembic 版本 (`head`) 與資料庫當前版本 (`current`)。
+- **行為**: 若發現資料庫不同步 (Missing Migrations)，系統將**拒絕啟動**並顯示明確錯誤訊息，防止因 Schema 不一致導致的 Runtime Error。
+
+### 5.2 全域異常攔截 (Global Exception Handling)
+- **機制**: 在 FastAPI `main.py` 層級實作 `global_exception_handler`。
+- **功能**: 捕捉所有未被業務邏輯處理的例外 (500 Internal Server Error)。
+- **行為**:
+  - 強制回寫 CORS Header (`Access-Control-Allow-Origin: *`)。
+  - 回傳標準化 JSON 錯誤結構 (`{"detail": "...", "message": "..."}`)。
+  - **目的**: 避免瀏覽器因收不到 CORS Header 而報出 `CORS policy blocked`，導致開發者誤判為網路設定問題，掩蓋了真正的後端程式錯誤。

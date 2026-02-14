@@ -1,5 +1,8 @@
 # StallEasy POS
 
+![Logo](image/loog.png)
+
+
 StallEasy POS 是一套專為小吃攤與小型店家設計的 POS 系統，
 主打 **稅務安心、離線可用、可稽核、可演進 AI**。
 
@@ -10,6 +13,11 @@ StallEasy POS 是一套專為小吃攤與小型店家設計的 POS 系統，
 - **智能鍵盤**：支援實體鍵盤快捷鍵操作
 - **快速金額**：常用金額快速選擇
 - **離線營運**：無網路也能正常收銀
+- **iPad 支援**：支援 iPad/平板橫屏全螢幕 PWA 模式 (iOS Safari -> 加入主畫面)
+
+### 區域網路連線
+- **動態 API URL**：系統自動偵測伺服器來源，支援平板透過區網連線無需手動設定 IP
+- **自動化 CORS**：後端自動處理區網連線安全權限
 
 ### 權限管理 (RBAC)
 - **三種角色**：員工 (Staff)、主管 (Manager)、老闆 (Owner)
@@ -20,7 +28,7 @@ StallEasy POS 是一套專為小吃攤與小型店家設計的 POS 系統，
 - **店鋪選擇**：登入後選擇要操作的店鋪
 - **角色顯示**：顯示使用者在每個店鋪的角色
 - **店鋪切換**：支援多店鋪使用者切換操作店鋪
-- **管理入口**：老闆帳號可訪問店鋪管理後台
+- **管理入口**：老闆帳號可訪問店鋪管理後台，所有頁面支援 Branding Logo 顯示
 
 ### 管理功能
 - **日結報表**：每日營收統計與結算
@@ -65,12 +73,24 @@ npm install
 npm run dev
 
 # 啟動開發伺服器 (Backend)
+```bash
+# 進入後端目錄
 cd backend
-# 啟動開發伺服器 (Frontend)
-npm run dev
 
-# 啟動開發伺服器 (Backend)
-cd backend
+# 首次安裝與初始化 (Windows)
+# 此腳本會自動:
+# 1. 建立 .env (若不存在)
+# 2. 建立 Python 虛擬環境
+# 3. 安裝依賴
+# 4. 執行資料庫遷移 (建立表格)
+# 5. 填充初始資料
+.\setup_backend.bat
+
+# 注意:
+# 腳本執行後，請檢查產生的 .env 檔案
+# 務必修改 SECRET_KEY 與 DATABASE_URL (若您的資料庫密碼非預設值)
+
+# 日常啟動伺服器
 .\backend.bat
 
 # 使用批次檔快速啟動
@@ -144,9 +164,7 @@ python -m scripts.create_tables_script
 # 重置資料庫 (backend/scripts/reset_db.py)
 python -m scripts.reset_db
 
-# 資料庫遷移 (Alembic)
-.\migrate_db.bat
-```
+
 
 ### 資料填充 (Seeds)
 ```bash
@@ -200,6 +218,7 @@ python -m scripts.check_api_response
 
 - [技術規格](docs/specs/technical-spec-v1.md)
 - [資料庫架構](docs/specs/db-schema-v1.md)
+- [區域網路與 PWA 設定指南](docs/LAN_PWA_SETUP.md)
 - [前端設計系統](docs/specs/frontend/DESIGN_SYSTEM.md)
 - [API 規範](docs/specs/frontend/API.md)
 
@@ -220,7 +239,10 @@ python -m scripts.check_api_response
 - ✅ 商品管理系統基礎架構 (分類、耗材、屬性)
 - ✅ 商品編輯與管理功能 (新增、編輯、刪除、分類管理)
 - ✅ 耗材管理系統 (列表、編輯、庫存數字鍵盤、低庫存警告、4位小數精度)
-- ✅ 商品配方與成本計算 (關聯耗材、自動計算成本、4位小數精度)
+- ✅ 商品配方與自動成本計算
+- ✅ iPad 區網連線自動識別
+- ✅ PWA 全螢幕模式支援
+- ✅ 全域品牌圖示 (Branding) 整合
 - ⏳ 電子發票整合 (規劃中)
 - ⏳ 外送平台整合 (規劃中)
 

@@ -33,6 +33,7 @@
    ```
    腳本會自動：
    - 建立/啟用 `venv`
+   - **檢查資料庫同步狀態 (`check_db.py`)** <new>
    - 安裝依賴 (`requirements.txt`)
    - 啟動 Uvicorn (http://localhost:8000)
 

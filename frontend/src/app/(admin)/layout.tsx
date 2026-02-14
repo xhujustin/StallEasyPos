@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { LayoutDashboard, Box, Users, Settings, FileText, ExternalLink, ChevronDown, Package } from 'lucide-react';
@@ -34,7 +35,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         <div className={styles.container}>
             <aside className={styles.sidebar}>
                 <div className={styles.header}>
-                    <div className={styles.logo}>S</div>
+                    <div className={styles.logo}>
+                        <Image src="/icon.png" alt="Logo" width={64} height={64} className="rounded-md" />
+                    </div>
                     <span className={styles.brandName}>StallEasy Admin</span>
                 </div>
 

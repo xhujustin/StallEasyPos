@@ -24,15 +24,11 @@
 }
 
 .logo {
-    width: 2rem;
-    height: 2rem;
-    background-color: #D4AF37;
-    border-radius: 0.375rem;
+    width: 4rem;
+    height: 4rem;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-weight: 700;
-    color: rgb(15 23 42);
     margin-right: 0.75rem;
 }
 

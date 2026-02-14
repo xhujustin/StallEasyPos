@@ -23,6 +23,14 @@ export default function POSPage() {
 
     // 使用選擇的店鋪ID,如果沒有則使用第一個店鋪
     const storeId = selectedStoreId || user?.stores?.[0]?.id;
+    const currentStore = user?.stores?.find((s) => s.id === storeId);
+
+    const roleLabels: Record<string, string> = {
+        'owner': '老闆',
+        'manager': '店長',
+        'staff': '店員'
+    };
+    const translatedRole = currentStore?.user_role ? (roleLabels[currentStore.user_role] || currentStore.user_role) : '';
 
     // 注意:移除了自動跳轉到select-store的邏輯
     // 因為這會導致頁面在select-store和pos之間無限循環
@@ -56,25 +64,39 @@ export default function POSPage() {
         <div className="flex w-full h-full">
             {/* Product Catalog Area (Left) */}
             <div className="flex-1 flex flex-col border-r border-slate-200 bg-slate-50">
-                {/* Category Tabs */}
-                <div className="h-16 border-b border-slate-200 flex items-center px-4 gap-2 overflow-x-auto bg-white shadow-sm shrink-0">
-                    {categories.map((cat) => (
-                        <Button
-                            key={cat}
-                            variant={activeCategory === cat ? 'default' : 'ghost'}
-                            className={activeCategory === cat
-                                ? 'bg-slate-900 text-white hover:bg-slate-800 rounded-full px-6'
-                                : 'text-slate-600 hover:bg-slate-100 rounded-full px-6'
-                            }
-                            onClick={() => setActiveCategory(cat)}
-                        >
-                            {cat}
-                        </Button>
-                    ))}
+                {/* Category Tabs & Info */}
+                <div className="h-16 border-b border-slate-200 flex items-center px-4 gap-4 bg-white shadow-sm shrink-0">
+                    <div className="flex items-center gap-2 overflow-x-auto flex-1 min-w-0 h-full py-2">
+                        {categories.map((cat) => (
+                            <Button
+                                key={cat}
+                                variant={activeCategory === cat ? 'default' : 'ghost'}
+                                className={activeCategory === cat
+                                    ? 'bg-slate-900 text-white hover:bg-slate-800 rounded-full px-6 shrink-0'
+                                    : 'text-slate-600 hover:bg-slate-100 rounded-full px-6 shrink-0'
+                                }
+                                onClick={() => setActiveCategory(cat)}
+                            >
+                                {cat}
+                            </Button>
+                        ))}
+                    </div>
+
+                    {/* Store & User Info */}
+                    <div className="flex items-center gap-6 px-4 border-l border-slate-300 shrink-0 bg-white h-full">
+                        <div className="flex flex-col justify-center">
+                            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider leading-none mb-1">目前店鋪</span>
+                            <span className="text-sm font-bold text-slate-900 leading-none">{currentStore?.name || '未選擇店鋪'}</span>
+                        </div>
+                        <div className="flex flex-col items-end justify-center">
+                            <span className="text-sm font-bold text-slate-900 leading-none mb-1">{user?.username}</span>
+                            <span className="text-[10px] text-slate-500 font-medium bg-slate-100 px-1.5 py-0.5 rounded leading-none">{translatedRole}</span>
+                        </div>
+                    </div>
                 </div>
 
                 {/* Product Grid */}
-                <ScrollArea className="flex-1 p-4">
+                <div className="flex-1 overflow-y-auto p-4">
                     {isLoading ? (
                         <div className="h-full flex flex-col items-center justify-center text-slate-400">
                             <Loader2 className="w-8 h-8 animate-spin mb-2" />
@@ -103,8 +125,8 @@ export default function POSPage() {
                                         price: product.price
                                     }, 1)}
                                 >
-                                    <CardContent className="p-4 flex flex-col gap-2 h-full justify-between">
-                                        <div className="w-full aspect-square bg-slate-100 rounded-md mb-2 flex items-center justify-center text-slate-300 relative overflow-hidden">
+                                    <CardContent className="px-3 pb flex flex-col gap-0 h-full justify-between">
+                                        <div className="w-full aspect-square bg-slate-100 rounded-md mb-3 flex items-center justify-center text-slate-300 relative overflow-hidden">
                                             {/* Placeholder or Image */}
                                             {product.image_url ? (
                                                 <img src={product.image_url} alt={product.name} className="object-cover w-full h-full" />
@@ -115,8 +137,8 @@ export default function POSPage() {
                                             )}
                                         </div>
                                         <div>
-                                            <h3 className="font-medium text-slate-900 line-clamp-1">{product.name}</h3>
-                                            <div className="text-[#D4AF37] font-bold mt-1">
+                                            <h3 className="font-medium text-slate-900 line-clamp-1 text-sm leading-tight">{product.name}</h3>
+                                            <div className="text-[#D4AF37] font-bold mt-1 text-sm leading-tight">
                                                 ${product.price}
                                             </div>
                                         </div>
@@ -125,7 +147,7 @@ export default function POSPage() {
                             ))}
                         </div>
                     )}
-                </ScrollArea>
+                </div>
             </div>
 
             {/* Cart Sidebar (Right) */}
