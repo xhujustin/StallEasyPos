@@ -13,6 +13,34 @@ export interface ProductMaterialCreate {
     quantity: number;
 }
 
+export interface OptionMaterial {
+    id?: number;
+    option_id?: number;
+    material_id: number;
+    quantity: number;
+    material?: Material;
+}
+
+export interface ProductAttributeOption {
+    id?: number;
+    attribute_id?: number;
+    name: string;
+    price_adjustment: number;
+    is_active: boolean;
+    display_order: number;
+    materials?: OptionMaterial[];
+}
+
+export interface ProductAttribute {
+    id?: number;
+    product_id?: number;
+    name: string;
+    min_selection: number;
+    max_selection: number;
+    display_order: number;
+    options: ProductAttributeOption[];
+}
+
 export interface Product {
     id: number;
     store_id: number;
@@ -20,7 +48,7 @@ export interface Product {
     price: number;
     cost?: number; // 注意: 這個cost欄位通常是手動輸入的,我們可以用它來存儲自動計算的成本,或者作為覆蓋值
     category?: string;
-    attributes?: Record<string, any>;
+    attributes?: ProductAttribute[];
     is_active: boolean;
     image_url?: string;
     description?: string;
@@ -37,6 +65,7 @@ export interface ProductCreate {
     is_active?: boolean;
     image_url?: string;
     materials?: ProductMaterialCreate[];
+    attributes?: ProductAttribute[];
 }
 
 export interface ProductUpdate {
@@ -47,12 +76,13 @@ export interface ProductUpdate {
     is_active?: boolean;
     image_url?: string;
     materials?: ProductMaterialCreate[];
+    attributes?: ProductAttribute[];
 }
 
 export const productApi = {
     // 取得所有商品
     getAll: async (storeId: number) => {
-        const response = await apiClient.get<ResponseBase<Product[]>>('/products', {
+        const response = await apiClient.get<ResponseBase<Product[]>>('/products/', {
             params: { store_id: storeId }
         });
         return response.data.data;

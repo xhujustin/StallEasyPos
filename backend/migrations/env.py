@@ -24,6 +24,7 @@ from app.models.invoice import InvoiceRecord
 from app.models.closing import DailyClosing
 from app.models.adjustment import Adjustment
 from app.models.audit import AuditLog
+from app.models.shift import Shift
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

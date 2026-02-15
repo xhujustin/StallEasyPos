@@ -46,6 +46,10 @@ export const useAuthStore = create<AuthState>()(
                 selectedStoreId: storeId
             }),
 
+            refreshShift: () => {
+                window.dispatchEvent(new Event('shift-data-changed'));
+            },
+
             logout: () => set({
                 token: null,
                 user: null,

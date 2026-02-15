@@ -1,6 +1,7 @@
 from typing import Optional, Dict, Any, List
 from pydantic import BaseModel, ConfigDict
 from app.schemas.materials import MaterialOut
+from app.schemas.product_attributes import ProductAttributeCreate, ProductAttributeOut, ProductAttributeUpdate
 
 class ProductMaterialCreate(BaseModel):
     material_id: int
@@ -19,7 +20,7 @@ class ProductCreate(BaseModel):
     price: float
     cost: Optional[float] = None
     category: Optional[str] = None
-    attributes: Optional[Dict[str, Any]] = None
+    attributes: Optional[List[ProductAttributeCreate]] = None
     materials: Optional[List[ProductMaterialCreate]] = None
 
 class ProductUpdate(BaseModel):
@@ -28,7 +29,7 @@ class ProductUpdate(BaseModel):
     cost: Optional[float] = None
     category: Optional[str] = None
     is_active: Optional[bool] = None
-    attributes: Optional[Dict[str, Any]] = None
+    attributes: Optional[List[ProductAttributeUpdate]] = None
     image_url: Optional[str] = None
     materials: Optional[List[ProductMaterialCreate]] = None
 
@@ -40,7 +41,7 @@ class ProductOut(BaseModel):
     cost: Optional[float]
     category: Optional[str]
     is_active: bool
-    attributes: Optional[Dict[str, Any]]
+    attributes: List[ProductAttributeOut] = []
     image_url: Optional[str]
     materials: List[ProductMaterialOut] = []
     

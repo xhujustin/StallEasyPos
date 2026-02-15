@@ -12,6 +12,14 @@ export interface TokenResponse {
     token_type: string;
 }
 
+export interface User {
+    id: number;
+    username: string;
+    email?: string;
+    is_active: boolean;
+    role?: string;
+}
+
 export const authApi = {
     login: async (credentials: OAuth2PasswordRequestForm): Promise<TokenResponse> => {
         // FastAPI OAuth2PasswordRequestForm expects form-data

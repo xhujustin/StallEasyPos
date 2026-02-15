@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { useCartStore } from '@/lib/store/cart-store';
+import { useCartStore, CartItemOption } from '@/lib/store/cart-store';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { productApi, Product } from '@/lib/api/products';
 import { Button } from '@/components/ui/button';
@@ -11,7 +11,11 @@ import { Card, CardContent } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Trash2, Plus, Minus, ShoppingCart, Loader2, AlertCircle } from 'lucide-react';
 import { CheckoutModal } from '@/components/pos/checkout-modal';
+import { ProductOptionDialog } from '@/components/pos/ProductOptionDialog';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+
+import { CashManagementDialog } from '@/components/pos/CashManagementDialog';
+import { shiftApi } from '@/lib/api/shifts';
 
 export default function POSPage() {
     const router = useRouter();
@@ -20,6 +24,14 @@ export default function POSPage() {
     const { items, addToCart, removeFromCart, updateQuantity, totalAmount } = useCartStore();
     const [activeCategory, setActiveCategory] = useState('全部');
     const { user, selectedStoreId } = useAuthStore();
+
+    // Cash Management State
+    const [showCashDialog, setShowCashDialog] = useState(false);
+    const [currentShiftId, setCurrentShiftId] = useState<number | null>(null);
+
+    // Product Option Dialog State
+    const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+    const [showOptionDialog, setShowOptionDialog] = useState(false);
 
     // 使用選擇的店鋪ID,如果沒有則使用第一個店鋪
     const storeId = selectedStoreId || user?.stores?.[0]?.id;
@@ -47,11 +59,49 @@ export default function POSPage() {
     });
 
     useEffect(() => {
-        // eslint-disable-next-line react-hooks/set-state-in-effect
         setMounted(true);
-    }, []);
+        // Fetch current shift ID
+        const fetchShift = async () => {
+            if (storeId) {
+                try {
+                    const shift = await shiftApi.getCurrent(storeId);
+                    if (shift) {
+                        setCurrentShiftId(shift.id);
+                    }
+                } catch (err) {
+                    console.error("Failed to fetch current shift", err);
+                }
+            }
+        };
+        fetchShift();
+    }, [storeId]);
 
-    const categories = ['全部', ...Array.from(new Set(products.map((p: Product) => p.category || '未分類')))];
+    const handleProductClick = (product: Product) => {
+        if (product.attributes && product.attributes.length > 0) {
+            setSelectedProduct(product);
+            setShowOptionDialog(true);
+        } else {
+            addToCart({
+                id: product.id,
+                name: product.name,
+                price: product.price,
+                image_url: product.image_url
+            }, 1);
+        }
+    };
+
+    const handleOptionConfirm = (options: CartItemOption[], quantity: number) => {
+        if (selectedProduct) {
+            addToCart({
+                id: selectedProduct.id,
+                name: selectedProduct.name,
+                price: selectedProduct.price,
+                image_url: selectedProduct.image_url
+            }, quantity, options);
+        }
+    };
+
+    const categories = Array.from(new Set(['全部', ...products.map((p: Product) => p.category || '未分類')]));
 
     const filteredProducts = (activeCategory === '全部'
         ? products
@@ -61,7 +111,7 @@ export default function POSPage() {
     if (!mounted) return null;
 
     return (
-        <div className="flex w-full h-full">
+        <div className="flex w-full h-full overflow-hidden">
             {/* Product Catalog Area (Left) */}
             <div className="flex-1 flex flex-col border-r border-slate-200 bg-slate-50">
                 {/* Category Tabs & Info */}
@@ -119,11 +169,7 @@ export default function POSPage() {
                                 <Card
                                     key={product.id}
                                     className="cursor-pointer hover:shadow-md transition-shadow active:scale-[0.98] border-slate-200"
-                                    onClick={() => addToCart({
-                                        id: product.id.toString(),
-                                        name: product.name,
-                                        price: product.price
-                                    }, 1)}
+                                    onClick={() => handleProductClick(product)}
                                 >
                                     <CardContent className="px-3 pb flex flex-col gap-0 h-full justify-between">
                                         <div className="w-full aspect-square bg-slate-100 rounded-md mb-3 flex items-center justify-center text-slate-300 relative overflow-hidden">
@@ -154,10 +200,23 @@ export default function POSPage() {
             <div className="w-[350px] lg:w-[400px] flex flex-col bg-white shadow-xl z-40">
                 <div className="h-16 border-b border-slate-200 flex items-center px-6 justify-between shrink-0">
                     <h2 className="font-bold text-lg text-slate-900">購物車</h2>
-                    <span className="text-sm text-slate-500">{items.length} 項目</span>
+                    <div className="flex items-center gap-2">
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="text-slate-500 hover:text-slate-900"
+                            onClick={() => setShowCashDialog(true)}
+                            title="錢箱管理 (補錢/取款)"
+                        >
+                            <span className="sr-only">錢箱管理</span>
+                            {/* Coins icon manually or ensure import */}
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-coins"><circle cx="8" cy="8" r="6" /><path d="M18.09 10.37A6 6 0 1 1 10.34 18" /><path d="M7 6h1v4" /><path d="m16.71 13.88.7.71-2.82 2.82" /></svg>
+                        </Button>
+                        <span className="text-sm text-slate-500">{items.length} 項目</span>
+                    </div>
                 </div>
 
-                <ScrollArea className="flex-1 p-4">
+                <ScrollArea className="flex-1 p-4 min-h-0">
                     {items.length === 0 ? (
                         <div className="h-full flex flex-col items-center justify-center text-slate-400 space-y-2">
                             <ShoppingCart className="w-12 h-12 opacity-20" />
@@ -166,23 +225,34 @@ export default function POSPage() {
                     ) : (
                         <div className="space-y-3">
                             {items.map((item) => (
-                                <div key={item.id} className="flex gap-3 p-3 bg-slate-50 rounded-lg border border-slate-100">
+                                <div key={item.cartItemId} className="flex gap-3 p-3 bg-slate-50 rounded-lg border border-slate-100">
                                     <div className="flex-1">
                                         <div className="flex justify-between items-start mb-1">
-                                            <span className="font-medium text-slate-900">{item.name}</span>
+                                            <div>
+                                                <span className="font-medium text-slate-900 block leading-tight">{item.name}</span>
+                                                {item.selectedOptions && item.selectedOptions.length > 0 && (
+                                                    <div className="flex flex-wrap gap-1 mt-1">
+                                                        {item.selectedOptions.map((opt, idx) => (
+                                                            <span key={idx} className="text-[10px] text-slate-500 bg-white px-1 py-0.5 rounded border border-slate-200">
+                                                                {opt.optionName} {opt.priceAdjustment > 0 ? `(+$${opt.priceAdjustment})` : ''}
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
                                             <span className="font-mono font-medium">${item.price * item.quantity}</span>
                                         </div>
-                                        <div className="flex items-center gap-3">
+                                        <div className="flex items-center gap-3 mt-2">
                                             <div className="flex items-center gap-1 bg-white rounded-md border border-slate-200 p-0.5">
-                                                <Button variant="ghost" size="icon" className="h-6 w-6 rounded-sm" onClick={() => updateQuantity(item.id, item.quantity - 1)}>
+                                                <Button variant="ghost" size="icon" className="h-6 w-6 rounded-sm" onClick={() => updateQuantity(item.cartItemId, item.quantity - 1)}>
                                                     <Minus className="h-3 w-3" />
                                                 </Button>
                                                 <span className="w-6 text-center text-sm font-mono">{item.quantity}</span>
-                                                <Button variant="ghost" size="icon" className="h-6 w-6 rounded-sm" onClick={() => addToCart(item)}>
+                                                <Button variant="ghost" size="icon" className="h-6 w-6 rounded-sm" onClick={() => updateQuantity(item.cartItemId, item.quantity + 1)}>
                                                     <Plus className="h-3 w-3" />
                                                 </Button>
                                             </div>
-                                            <Button variant="ghost" size="icon" className="h-6 w-6 text-red-500 hover:text-red-600 hover:bg-red-50 ml-auto" onClick={() => removeFromCart(item.id)}>
+                                            <Button variant="ghost" size="icon" className="h-6 w-6 text-red-500 hover:text-red-600 hover:bg-red-50 ml-auto" onClick={() => removeFromCart(item.cartItemId)}>
                                                 <Trash2 className="h-4 w-4" />
                                             </Button>
                                         </div>
@@ -219,6 +289,20 @@ export default function POSPage() {
             </div>
 
             <CheckoutModal open={showCheckout} onClose={() => setShowCheckout(false)} />
+            <ProductOptionDialog
+                open={showOptionDialog}
+                onClose={() => setShowOptionDialog(false)}
+                product={selectedProduct}
+                onConfirm={handleOptionConfirm}
+            />
+            <CashManagementDialog
+                open={showCashDialog}
+                onClose={() => setShowCashDialog(false)}
+                shiftId={currentShiftId}
+                onSuccess={() => {
+                    // Refresh shift data if needed, or show success message
+                }}
+            />
         </div>
     );
 }

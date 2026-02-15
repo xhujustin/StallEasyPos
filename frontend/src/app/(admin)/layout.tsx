@@ -4,7 +4,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { LayoutDashboard, Box, Users, Settings, FileText, ExternalLink, ChevronDown, Package } from 'lucide-react';
+import { LayoutDashboard, Box, Users, Settings, FileText, ExternalLink, ChevronDown, Package, BarChart3 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/lib/store/auth-store';
 import styles from './layout.module.css';
@@ -16,6 +16,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
     const navItems = [
         { href: '/admin/dashboard', icon: LayoutDashboard, label: '儀表板' },
+        { href: '/admin/reports', icon: BarChart3, label: '報表分析' },
         { href: '/admin/products', icon: Box, label: '商品管理' },
         { href: '/admin/materials', icon: Package, label: '耗材管理' },
         { href: '/admin/orders', icon: FileText, label: '訂單管理' },
@@ -36,7 +37,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             <aside className={styles.sidebar}>
                 <div className={styles.header}>
                     <div className={styles.logo}>
-                        <Image src="/icon.png" alt="Logo" width={64} height={64} className="rounded-md" />
+                        <Image src="/icon.png" alt="Logo" width={35} height={35} className="rounded-md" />
                     </div>
                     <span className={styles.brandName}>StallEasy Admin</span>
                 </div>

@@ -8,16 +8,19 @@ export interface Category {
     description: string | null;
     created_at: string;
     updated_at: string;
+    display_order?: number;
 }
 
 export interface CategoryCreate {
     name: string;
     description?: string | null;
+    display_order?: number;
 }
 
 export interface CategoryUpdate {
     name?: string;
     description?: string | null;
+    display_order?: number;
 }
 
 // Category API

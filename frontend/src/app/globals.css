@@ -118,7 +118,40 @@
   * {
     @apply border-border outline-ring/50;
   }
+
   body {
     @apply bg-background text-foreground;
   }
+}
+
+@media print {
+  @page {
+    margin: 0;
+    size: auto;
+  }
+
+  body {
+    background: white;
+  }
+
+  /* Hide everything by default (except the portal container) */
+  body>*:not(.print-only-container) {
+    display: none !important;
+  }
+
+  /* Show only the print container */
+  .print-only-container {
+    display: block !important;
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+  }
+}
+
+/* Hide on screen */
+.print-only-container {
+  display: none;
 }

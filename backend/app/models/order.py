@@ -3,8 +3,12 @@ from enum import Enum
 from typing import Optional, List
 from sqlalchemy import BigInteger, Text, Numeric, Boolean, DateTime, Date, func, ForeignKey, UniqueConstraint, Index, Identity
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.dialects.postgresql import ENUM as PG_ENUM
+from sqlalchemy.dialects.postgresql import ENUM as PG_ENUM, JSONB
 from app.models.base import Base, psql_enum
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.models.user import User
 
 class OrderSource(str, Enum):
     POS = "pos"
@@ -28,6 +32,7 @@ class Order(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
     store_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("stores.id", ondelete="RESTRICT"), nullable=False)
+    shift_id: Mapped[Optional[int]] = mapped_column(BigInteger, ForeignKey("shifts.id", ondelete="SET NULL"), nullable=True, index=True)
     order_no: Mapped[int] = mapped_column(BigInteger, nullable=False)
     
     source: Mapped[OrderSource] = mapped_column(psql_enum(OrderSource, name="order_source"), nullable=False, server_default="pos")
@@ -44,11 +49,18 @@ class Order(Base):
     voided_by: Mapped[Optional[int]] = mapped_column(BigInteger, ForeignKey("users.id"), nullable=True)
     void_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
+    created_by_id: Mapped[Optional[int]] = mapped_column(BigInteger, ForeignKey("users.id"), nullable=True)
+    cash_received: Mapped[Optional[float]] = mapped_column(Numeric(10, 2), nullable=True)
+    change_amount: Mapped[Optional[float]] = mapped_column(Numeric(10, 2), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
+    # Relationships
+    created_by: Mapped[Optional["User"]] = relationship(foreign_keys=[created_by_id])
+
     __table_args__ = (
-        UniqueConstraint("store_id", "order_no", name="uq_orders_store_orderno"),
+        UniqueConstraint("store_id", "business_date", "order_no", name="uq_orders_store_date_orderno"),
         UniqueConstraint("store_id", "idempotency_key", name="uq_orders_store_idempotency"),
         Index("idx_orders_store_created", "store_id", "created_at"),
         Index("idx_orders_store_date", "store_id", "business_date"),
@@ -72,6 +84,7 @@ class OrderItem(Base):
     quantity: Mapped[float] = mapped_column(Numeric(10, 3), nullable=False, server_default="1")
     note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     packaging_used: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    options: Mapped[Optional[List[dict]]] = mapped_column(JSONB, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 

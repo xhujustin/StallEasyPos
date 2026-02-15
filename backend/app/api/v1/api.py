@@ -12,6 +12,8 @@ from app.api.v1.endpoints import (
     audit,
     categories,
     materials,
+    dashboard,
+    shifts,
 )
 
 api_router = APIRouter()
@@ -28,3 +30,5 @@ api_router.include_router(closing.router, prefix="/closing", tags=["closing"])
 api_router.include_router(adjustments.router, prefix="/adjustments", tags=["adjustments"])
 api_router.include_router(invoices.router, prefix="/invoices", tags=["invoices"])
 api_router.include_router(audit.router, prefix="/audit", tags=["audit"])
+api_router.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])
+api_router.include_router(shifts.router, prefix="/shifts", tags=["shifts"])

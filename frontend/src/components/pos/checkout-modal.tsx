@@ -1,6 +1,7 @@
 'use client';
 
 import { useCartStore } from '@/lib/store/cart-store';
+import { useAuthStore } from '@/lib/store/auth-store';
 import { Button } from '@/components/ui/button';
 import { useState, useEffect } from 'react';
 import { CheckCircle } from 'lucide-react';
@@ -14,14 +15,79 @@ interface CheckoutModalProps {
     onClose: () => void;
 }
 
+
 export function CheckoutModal({ open, onClose }: CheckoutModalProps) {
     const { totalAmount, clearCart, items } = useCartStore();
+    const { selectedStoreId, user } = useAuthStore();
+    const storeId = selectedStoreId || user?.stores?.[0]?.id;
+
     const total = totalAmount();
     const [cashReceived, setCashReceived] = useState('');
     const [isCompleted, setIsCompleted] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [change, setChange] = useState(0);
 
+    // ... (handlers)
+
+    const handleCheckout = async () => {
+        if (!storeId) {
+            alert("未選擇店鋪，無法結帳");
+            return;
+        }
+
+        const received = parseInt(cashReceived) || 0;
+        if (received >= total) {
+            setIsLoading(true);
+            try {
+                // Prepare payload
+                const orderData: OrderCreate = {
+                    idempotency_key: (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+                        var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+                        return v.toString(16);
+                    }),
+                    total_amount: total,
+                    payment_method: PaymentMethod.CASH,
+                    source: OrderSource.POS,
+                    cash_received: received,
+                    change_amount: received - total,
+                    items: items.map(item => ({
+                        product_id: item.productId,
+                        quantity: item.quantity,
+                        note: item.note,
+                        options: item.selectedOptions.map(opt => ({
+                            attribute_id: opt.attributeId,
+                            attribute_name: opt.attributeName,
+                            option_id: opt.optionId,
+                            option_name: opt.optionName,
+                            price_adjustment: opt.priceAdjustment
+                        }))
+                    }))
+                };
+
+                // Remove console log after debugging
+                // console.log("Sending Order Payload:", JSON.stringify(orderData, null, 2));
+
+                // Call API
+                await orderApi.create(storeId, orderData);
+
+                // Success UI
+                setChange(received - total);
+                setIsCompleted(true);
+                clearCart();
+            } catch (error: any) {
+                console.error("Checkout failed:", error);
+                if (error.response) {
+                    console.error("Error Response Data:", error.response.data);
+                    console.error("Error Response Status:", error.response.status);
+                    alert(`結帳失敗: ${JSON.stringify(error.response.data)}`);
+                } else {
+                    alert("結帳失敗，請檢查網路或後端狀態");
+                }
+            } finally {
+                setIsLoading(false);
+            }
+        }
+    };
     const handleNumberClick = (num: string) => {
         setCashReceived((prev) => prev + num);
     };
@@ -38,39 +104,7 @@ export function CheckoutModal({ open, onClose }: CheckoutModalProps) {
         setCashReceived(total.toString());
     };
 
-    const handleCheckout = async () => {
-        const received = parseInt(cashReceived) || 0;
-        if (received >= total) {
-            setIsLoading(true);
-            try {
-                // Prepare payload
-                const orderData: OrderCreate = {
-                    idempotency_key: crypto.randomUUID(),
-                    total_amount: total,
-                    payment_method: PaymentMethod.CASH,
-                    source: OrderSource.POS,
-                    items: items.map(item => ({
-                        product_id: parseInt(item.id), // items.id is string
-                        quantity: item.quantity,
-                        note: item.note
-                    }))
-                };
 
-                // Call API
-                await orderApi.create(orderData);
-
-                // Success UI
-                setChange(received - total);
-                setIsCompleted(true);
-                clearCart();
-            } catch (error) {
-                console.error("Checkout failed:", error);
-                alert("結帳失敗，請檢查網路或後端狀態");
-            } finally {
-                setIsLoading(false);
-            }
-        }
-    };
 
     const handleClose = () => {
         setCashReceived('');

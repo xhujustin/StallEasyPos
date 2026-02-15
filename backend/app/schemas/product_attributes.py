@@ -36,26 +36,32 @@ class ProductAttributeOptionOut(BaseModel):
     price_adjustment: Decimal
     is_active: bool
     display_order: int
+    materials: List[OptionMaterialOut] = []
     
     model_config = ConfigDict(from_attributes=True)
 
 # ProductAttribute Schemas
 class ProductAttributeCreate(BaseModel):
     name: str
-    is_required: bool = True
+    min_selection: int = 0
+    max_selection: int = 1
     display_order: int = 0
     options: List[ProductAttributeOptionCreate] = []
 
 class ProductAttributeUpdate(BaseModel):
     name: Optional[str] = None
-    is_required: Optional[bool] = None
+    min_selection: Optional[int] = None
+    max_selection: Optional[int] = None
     display_order: Optional[int] = None
+    options: Optional[List[ProductAttributeOptionCreate]] = []
 
 class ProductAttributeOut(BaseModel):
     id: int
     product_id: int
     name: str
-    is_required: bool
+    min_selection: int
+    max_selection: int
     display_order: int
+    options: List[ProductAttributeOptionOut] = []
     
     model_config = ConfigDict(from_attributes=True)

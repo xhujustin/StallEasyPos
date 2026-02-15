@@ -23,6 +23,7 @@ class Product(Base):
 
     # Relationships
     materials: Mapped[list["ProductMaterial"]] = relationship("ProductMaterial", back_populates="product", cascade="all, delete-orphan")
+    attributes: Mapped[list["ProductAttribute"]] = relationship("ProductAttribute", backref="product", cascade="all, delete-orphan", order_by="ProductAttribute.display_order")
 
     __table_args__ = (
         Index("idx_products_store_category", "store_id", "category"),

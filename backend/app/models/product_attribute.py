@@ -11,7 +11,8 @@ class ProductAttribute(Base):
     id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
     product_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("products.id", ondelete="CASCADE"), nullable=False)
     name: Mapped[str] = mapped_column(Text, nullable=False)  # 尺寸、甜度、溫度
-    is_required: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+    min_selection: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    max_selection: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
     display_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
@@ -20,6 +21,8 @@ class ProductAttribute(Base):
     __table_args__ = (
         Index("idx_product_attributes_product", "product_id"),
     )
+
+    options: Mapped[list["ProductAttributeOption"]] = relationship("ProductAttributeOption", backref="attribute", cascade="all, delete-orphan", order_by="ProductAttributeOption.display_order")
 
 
 class ProductAttributeOption(Base):
@@ -39,6 +42,8 @@ class ProductAttributeOption(Base):
         Index("idx_attribute_options_attribute", "attribute_id"),
     )
 
+    materials: Mapped[list["OptionMaterial"]] = relationship("OptionMaterial", backref="option", cascade="all, delete-orphan")
+
 
 class OptionMaterial(Base):
     __tablename__ = "option_materials"
@@ -55,3 +60,5 @@ class OptionMaterial(Base):
         Index("idx_option_materials_option", "option_id"),
         Index("idx_option_materials_material", "material_id"),
     )
+
+    material: Mapped["Material"] = relationship("Material")

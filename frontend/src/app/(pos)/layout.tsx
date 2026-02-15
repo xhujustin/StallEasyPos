@@ -10,15 +10,55 @@ import { useAuthStore } from '@/lib/store/auth-store';
 import { SyncIndicator } from '@/components/pos/sync-indicator';
 import styles from './layout.module.css';
 
+import { useState, useEffect } from 'react';
+import { shiftApi } from '@/lib/api/shifts';
+import { CashManagementDialog } from '@/components/pos/CashManagementDialog';
+import { Coins } from 'lucide-react';
+import { toast } from 'sonner';
+
 export default function POSLayout({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();
     const { user, selectedStoreId } = useAuthStore();
     const itemCount = useCartStore((state) => state.items.reduce((sum, item) => sum + item.quantity, 0));
 
+    // Cash Management State
+    const [showCashDialog, setShowCashDialog] = useState(false);
+    const [currentShiftId, setCurrentShiftId] = useState<number | null>(null);
+
+    useEffect(() => {
+        const fetchShift = async () => {
+            if (selectedStoreId) {
+                try {
+                    console.log("[POSLayout] Fetching current shift for store:", selectedStoreId);
+                    const shift = await shiftApi.getCurrent(selectedStoreId);
+                    const newId = shift ? shift.id : null;
+                    console.log("[POSLayout] Active shift status:", newId);
+                    setCurrentShiftId(newId);
+                } catch (err) {
+                    console.error("[POSLayout] Failed to fetch shift id", err);
+                }
+            }
+        };
+
+        fetchShift();
+
+        const handleShiftUpdate = () => {
+            console.log("[POSLayout] Global 'shift-data-changed' event caught. Refreshing ID...");
+            fetchShift();
+        };
+
+        window.addEventListener('shift-data-changed', handleShiftUpdate);
+
+        // Also refresh when pathname changes to ensure sidebar is in sync with navigation
+        handleShiftUpdate();
+
+        return () => window.removeEventListener('shift-data-changed', handleShiftUpdate);
+    }, [selectedStoreId, pathname]);
+
     const navItems = [
         { href: '/pos', icon: Store, label: '收銀' },
         { href: '/pos/orders', icon: FileText, label: '訂單' },
-        { href: '/pos/closing', icon: DollarSign, label: '日結' },
+        { href: '/pos/closing', icon: DollarSign, label: '班結' },
         { href: '/pos/settings', icon: Settings, label: '設定' },
     ];
 
@@ -27,6 +67,14 @@ export default function POSLayout({ children }: { children: React.ReactNode }) {
     if (currentStore?.user_role === 'owner' || currentStore?.user_role === 'manager') {
         navItems.push({ href: '/admin/dashboard', icon: LayoutDashboard, label: '管理店鋪' });
     }
+
+    const handleCashDrawerClick = () => {
+        if (!currentShiftId) {
+            toast.error("請先開班才能使用錢箱功能");
+            return;
+        }
+        setShowCashDialog(true);
+    };
 
     return (
         <div className={styles.container}>
@@ -41,20 +89,38 @@ export default function POSLayout({ children }: { children: React.ReactNode }) {
                         const isActive = pathname === item.href;
 
                         return (
-                            <Link key={item.href} href={item.href}>
-                                <div className={cn(
-                                    styles.navItem,
-                                    isActive ? styles.navItemActive : styles.navItemInactive
-                                )}>
-                                    <div className="relative">
-                                        <Icon className={styles.navIcon} />
-                                        {item.href === '/pos' && itemCount > 0 && (
-                                            <span className={styles.badge}>{itemCount}</span>
-                                        )}
+                            <div key={item.href}>
+                                <Link href={item.href}>
+                                    <div className={cn(
+                                        styles.navItem,
+                                        isActive ? styles.navItemActive : styles.navItemInactive
+                                    )}>
+                                        <div className="relative">
+                                            <Icon className={styles.navIcon} />
+                                            {item.href === '/pos' && itemCount > 0 && (
+                                                <span className={styles.badge}>{itemCount}</span>
+                                            )}
+                                        </div>
+                                        <span className={styles.navLabel}>{item.label}</span>
                                     </div>
-                                    <span className={styles.navLabel}>{item.label}</span>
-                                </div>
-                            </Link>
+                                </Link>
+                                {/* Insert Cash Button after Closing */}
+                                {item.href === '/pos/closing' && (
+                                    <button
+                                        onClick={handleCashDrawerClick}
+                                        className={cn(
+                                            styles.navItem,
+                                            showCashDialog ? styles.navItemActive : styles.navItemInactive,
+                                            "w-full cursor-pointer border-none bg-transparent p-0 mt-2"
+                                        )}
+                                    >
+                                        <div className="relative">
+                                            <Coins className={styles.navIcon} />
+                                        </div>
+                                        <span className={styles.navLabel}>錢箱</span>
+                                    </button>
+                                )}
+                            </div>
                         );
                     })}
                 </nav>
@@ -78,6 +144,15 @@ export default function POSLayout({ children }: { children: React.ReactNode }) {
             <main className={styles.mainContent}>
                 {children}
             </main>
+
+            <CashManagementDialog
+                open={showCashDialog}
+                onClose={() => setShowCashDialog(false)}
+                shiftId={currentShiftId}
+                onSuccess={() => {
+                    window.dispatchEvent(new Event('shift-data-changed'));
+                }}
+            />
         </div>
     );
 }

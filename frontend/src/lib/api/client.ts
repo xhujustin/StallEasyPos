@@ -57,9 +57,8 @@ apiClient.interceptors.response.use(
             // Trigger logout action
             useAuthStore.getState().logout();
 
-            // Optional: Redirect to login
-            // window.location.href = '/login'; 
-            // Better to let the UI react to auth state change
+            // Redirect to login
+            window.location.href = '/login';
         }
         return Promise.reject(error);
     }

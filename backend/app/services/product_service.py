@@ -6,6 +6,7 @@ from fastapi import HTTPException
 
 from app.models.product import Product
 from app.models.product_material import ProductMaterial
+from app.models.product_attribute import ProductAttribute, ProductAttributeOption, OptionMaterial
 from app.models.material import Material
 from app.schemas.products import ProductCreate, ProductUpdate
 from app.services.store_service import StoreService
@@ -23,8 +24,9 @@ class ProductService:
         # 驗證權限
         await StoreService.get_store_if_authorized(db, store_id, user_id)
         
-        product_data = product_in.model_dump(exclude={"materials"})
+        product_data = product_in.model_dump(exclude={"materials", "attributes"})
         materials_data = product_in.materials
+        attributes_data = product_in.attributes
 
         product = Product(
             store_id=store_id,
@@ -42,11 +44,44 @@ class ProductService:
                 )
                 db.add(pm)
 
+        if attributes_data:
+            for attr_in in attributes_data:
+                attr = ProductAttribute(
+                    product_id=product.id,
+                    name=attr_in.name,
+                    min_selection=attr_in.min_selection,
+                    max_selection=attr_in.max_selection,
+                    display_order=attr_in.display_order
+                )
+                db.add(attr)
+                await db.flush()
+
+                for opt_in in attr_in.options:
+                    opt = ProductAttributeOption(
+                        attribute_id=attr.id,
+                        name=opt_in.name,
+                        price_adjustment=opt_in.price_adjustment,
+                        is_active=opt_in.is_active,
+                        display_order=opt_in.display_order
+                    )
+                    db.add(opt)
+                    await db.flush()
+                    
+                    if opt_in.materials:
+                         for mat_in in opt_in.materials:
+                             om = OptionMaterial(
+                                 option_id=opt.id,
+                                 material_id=mat_in.material_id,
+                                 quantity=mat_in.quantity
+                             )
+                             db.add(om)
+
         await db.commit()
         
         # 重新載入包含關聯的資料
         stmt = select(Product).options(
-            joinedload(Product.materials).joinedload(ProductMaterial.material)
+            joinedload(Product.materials).joinedload(ProductMaterial.material),
+            joinedload(Product.attributes).joinedload(ProductAttribute.options).joinedload(ProductAttributeOption.materials).joinedload(OptionMaterial.material)
         ).where(Product.id == product.id)
         result = await db.execute(stmt)
         return result.scalars().first()
@@ -63,7 +98,8 @@ class ProductService:
         # 必須預先載入 materials，因為 ProductOut schema 包含此欄位
         # 否則會觸發 MissingGreenlet error (非同步環境下無法懶加載)
         stmt = select(Product).options(
-            joinedload(Product.materials).joinedload(ProductMaterial.material)
+            joinedload(Product.materials).joinedload(ProductMaterial.material),
+            joinedload(Product.attributes).joinedload(ProductAttribute.options).joinedload(ProductAttributeOption.materials).joinedload(OptionMaterial.material)
         ).where(Product.store_id == store_id)
         
         result = await db.execute(stmt)
@@ -81,8 +117,9 @@ class ProductService:
         # 驗證 Store 權限
         await StoreService.get_store_if_authorized(db, product.store_id, user_id)
         
-        update_data = product_in.model_dump(exclude_unset=True, exclude={"materials"})
+        update_data = product_in.model_dump(exclude_unset=True, exclude={"materials", "attributes"})
         materials_data = product_in.materials
+        attributes_data = product_in.attributes
 
         for key, value in update_data.items():
             setattr(product, key, value)
@@ -100,12 +137,48 @@ class ProductService:
                     quantity=mat.quantity
                 )
                 db.add(pm)
+
+        # 處理 attributes 更新 (全刪全建)
+        if attributes_data is not None:
+             await db.execute(delete(ProductAttribute).where(ProductAttribute.product_id == product.id))
+             
+             for attr_in in attributes_data:
+                attr = ProductAttribute(
+                    product_id=product.id,
+                    name=attr_in.name,
+                    min_selection=attr_in.min_selection,
+                    max_selection=attr_in.max_selection,
+                    display_order=attr_in.display_order
+                )
+                db.add(attr)
+                await db.flush()
+
+                for opt_in in attr_in.options:
+                    opt = ProductAttributeOption(
+                        attribute_id=attr.id,
+                        name=opt_in.name,
+                        price_adjustment=opt_in.price_adjustment,
+                        is_active=opt_in.is_active,
+                        display_order=opt_in.display_order
+                    )
+                    db.add(opt)
+                    await db.flush()
+                    
+                    if opt_in.materials:
+                         for mat_in in opt_in.materials:
+                             om = OptionMaterial(
+                                 option_id=opt.id,
+                                 material_id=mat_in.material_id,
+                                 quantity=mat_in.quantity
+                             )
+                             db.add(om)
             
         await db.commit()
         
         # 重新載入包含關聯的資料
         stmt = select(Product).options(
-            joinedload(Product.materials).joinedload(ProductMaterial.material)
+            joinedload(Product.materials).joinedload(ProductMaterial.material),
+            joinedload(Product.attributes).joinedload(ProductAttribute.options).joinedload(ProductAttributeOption.materials).joinedload(OptionMaterial.material)
         ).where(Product.id == product_id)
         result = await db.execute(stmt)
         return result.scalars().first()
@@ -119,7 +192,8 @@ class ProductService:
         await StoreService.get_store_if_authorized(db, store_id, user_id)
         
         stmt = select(Product).options(
-            joinedload(Product.materials).joinedload(ProductMaterial.material)
+            joinedload(Product.materials).joinedload(ProductMaterial.material),
+            joinedload(Product.attributes).joinedload(ProductAttribute.options).joinedload(ProductAttributeOption.materials).joinedload(OptionMaterial.material)
         ).where(Product.id == product_id)
         result = await db.execute(stmt)
         product = result.scalars().first()
