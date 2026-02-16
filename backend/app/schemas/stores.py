@@ -5,6 +5,9 @@ from pydantic import BaseModel, ConfigDict
 class StoreCreate(BaseModel):
     name: str
 
+class StoreUpdate(BaseModel):
+    name: Optional[str] = None
+
 class StoreOut(BaseModel):
     id: int
     name: str

@@ -37,6 +37,7 @@ export interface CreateStoreUser {
 }
 
 export interface UpdateStoreUser {
+    username?: string;
     role?: UserRole;
     pin?: string;
     full_name?: string;

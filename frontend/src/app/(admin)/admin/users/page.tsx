@@ -103,6 +103,7 @@ export default function AdminUsersPage() {
 
         try {
             const submitData: any = {
+                username: formData.username, // 總是在 submitData 中帶上 username
                 role: formData.role,
                 full_name: formData.full_name || null,
                 nickname: formData.nickname || null,
@@ -114,20 +115,23 @@ export default function AdminUsersPage() {
             };
             if (formData.pin) submitData.pin = formData.pin;
 
+            // 針對 OWNER 的帳號必填檢查
+            if (formData.role === UserRole.OWNER && !formData.username) {
+                alert('身為 OWNER 需填寫登入帳號');
+                return;
+            }
+
             if (editingUser) {
+                // 編輯模式：傳送包含 username 的 submitData
                 await userApi.update(selectedStoreId, editingUser.id, submitData);
             } else {
-                // Create
+                // 新增模式
                 const createData = {
                     ...submitData,
+                    // 如果不是 OWNER，自動生成一個內部使用的 staff 帳號
                     username: formData.role === UserRole.OWNER ? formData.username : `staff_${Date.now().toString().slice(-6)}`,
                     password: 'nopassword', // 系統統一使用 PIN，密碼設為固定預設值
                 };
-
-                if (formData.role === UserRole.OWNER && !formData.username) {
-                    alert('身為 OWNER 需填寫登入帳號');
-                    return;
-                }
 
                 await userApi.create(selectedStoreId, createData);
             }
@@ -268,20 +272,27 @@ export default function AdminUsersPage() {
                                         </td>
                                         <td className="px-6 py-4 text-right">
                                             <div className="flex items-center justify-end gap-2">
-                                                <button
-                                                    onClick={() => handleOpenModal(u)}
-                                                    className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
-                                                    title="編輯"
-                                                >
-                                                    <Edit size={16} />
-                                                </button>
-                                                <button
-                                                    onClick={() => handleDelete(u.id)}
-                                                    className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
-                                                    title="刪除"
-                                                >
-                                                    <Trash2 size={16} />
-                                                </button>
+                                                {/* 權限檢查：只有 Admin 自己可以修改/刪除 Admin 帳號，其他人無權檢閱操作 */}
+                                                {(!u.is_admin || u.id === user?.id) ? (
+                                                    <>
+                                                        <button
+                                                            onClick={() => handleOpenModal(u)}
+                                                            className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
+                                                            title="編輯"
+                                                        >
+                                                            <Edit size={16} />
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleDelete(u.id)}
+                                                            className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                                                            title="刪除"
+                                                        >
+                                                            <Trash2 size={16} />
+                                                        </button>
+                                                    </>
+                                                ) : (
+                                                    <span className="text-[11px] text-gray-400 px-2">受限</span>
+                                                )}
                                             </div>
                                         </td>
                                     </tr>
@@ -379,15 +390,23 @@ export default function AdminUsersPage() {
                                 </div>
 
                                 {/* Dynamic Row: Account (Only for OWNER) */}
-                                {formData.role === UserRole.OWNER && !editingUser && (
+                                {formData.role === UserRole.OWNER && (
                                     <div className="md:col-span-2">
-                                        <label className="block text-[11px] font-bold text-[#D4AF37] uppercase tracking-widest mb-1.5">登入帳號 (僅 OWNER 需設定)</label>
+                                        <label className="block text-[11px] font-bold text-[#D4AF37] uppercase tracking-widest mb-1.5">
+                                            登入帳號 {editingUser?.is_admin && "(Admin 帳號不可在此修改)"}
+                                        </label>
                                         <input
                                             type="text"
                                             required
+                                            disabled={editingUser?.is_admin}
                                             value={formData.username}
                                             onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                                            className="w-full px-4 py-2 bg-[#D4AF37]/5 border border-[#D4AF37]/20 rounded-lg focus:border-[#D4AF37] outline-none text-sm font-bold text-gray-800"
+                                            className={cn(
+                                                "w-full px-4 py-2 border rounded-lg outline-none text-sm font-bold transition-all",
+                                                editingUser?.is_admin
+                                                    ? "bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed"
+                                                    : "bg-[#D4AF37]/5 border-[#D4AF37]/20 focus:border-[#D4AF37] text-gray-800"
+                                            )}
                                             placeholder="登入系統使用"
                                         />
                                     </div>

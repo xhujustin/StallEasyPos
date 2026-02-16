@@ -127,6 +127,19 @@ class UserService:
         # 更新 User 詳細資訊
         user = await db.get(User, user_id)
         if user:
+            # Username check
+            if user_in.username is not None and user.username != user_in.username:
+                if user.is_admin:
+                    raise HTTPException(status_code=400, detail="Cannot change Admin username here")
+                
+                # Check uniqueness
+                exists_query = select(User).where(User.username == user_in.username)
+                exists = await db.execute(exists_query)
+                if exists.scalar_one_or_none():
+                     raise HTTPException(status_code=400, detail="Username already taken")
+                
+                user.username = user_in.username
+            
             if user_in.full_name is not None: user.full_name = user_in.full_name
             if user_in.nickname is not None: user.nickname = user_in.nickname
             if user_in.email is not None: user.email = user_in.email

@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException
@@ -101,4 +101,18 @@ class StoreService:
         store = result.scalars().first()
         if not store:
             raise HTTPException(status_code=403, detail="Store not found or permission denied")
+        return store
+
+    @staticmethod
+    async def update_store(db: AsyncSession, store_id: int, store_in: StoreCreate) -> Optional[Store]:
+        """更新店鋪基本資訊"""
+        store = await db.get(Store, store_id)
+        if not store:
+            return None
+        
+        if store_in.name is not None:
+            store.name = store_in.name
+            
+        await db.commit()
+        await db.refresh(store)
         return store

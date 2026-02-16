@@ -39,6 +39,7 @@ class StoreUserCreate(BaseModel):
     birthday: Optional[datetime] = None
 
 class StoreUserUpdate(BaseModel):
+    username: Optional[str] = None # Added for renaming
     role: Optional[UserRole] = None
     pin: Optional[str] = None # 6-8 digits, empty string to remove
     
