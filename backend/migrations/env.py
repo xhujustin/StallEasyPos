@@ -25,6 +25,7 @@ from app.models.closing import DailyClosing
 from app.models.adjustment import Adjustment
 from app.models.audit import AuditLog
 from app.models.shift import Shift
+from app.models.system_setting import SystemSetting
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
