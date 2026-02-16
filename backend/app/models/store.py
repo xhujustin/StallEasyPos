@@ -9,6 +9,7 @@ class Store(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
     name: Mapped[str] = mapped_column(Text, nullable=False)
+    store_account: Mapped[Optional[str]] = mapped_column(Text, unique=True, nullable=True)
     owner_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
     
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException, status
 
 from app.models.user import User, StoreUser, UserRole
+from app.models.store import Store
 from app.core import security
 from app.schemas.users import StoreUserCreate, StoreUserUpdate
 
@@ -22,7 +23,10 @@ class UserService:
                 StoreUser.pin_hash
             )
             .join(StoreUser, User.id == StoreUser.user_id)
-            .where(StoreUser.store_id == store_id)
+            .where(and_(
+                StoreUser.store_id == store_id,
+                User.is_admin == False
+            ))
         )
         result = await db.execute(query)
         
@@ -53,6 +57,11 @@ class UserService:
         user = result.scalars().first()
         
         if not user:
+            # 跨表唯一性檢查
+            store_check = await db.execute(select(Store).where(Store.store_account == user_in.username))
+            if store_check.scalar_one_or_none():
+                 raise HTTPException(status_code=400, detail="此帳號已與現有店鋪帳號衝突")
+            
             # 建立新使用者
             hashed_pw = security.get_password_hash(user_in.password) if user_in.password else None
             user = User(
@@ -132,11 +141,16 @@ class UserService:
                 if user.is_admin:
                     raise HTTPException(status_code=400, detail="Cannot change Admin username here")
                 
-                # Check uniqueness
+                # Check uniqueness (User Table)
                 exists_query = select(User).where(User.username == user_in.username)
                 exists = await db.execute(exists_query)
                 if exists.scalar_one_or_none():
-                     raise HTTPException(status_code=400, detail="Username already taken")
+                     raise HTTPException(status_code=400, detail="帳號已被其他使用者佔用")
+                
+                # Check uniqueness (Store Table)
+                store_check = await db.execute(select(Store).where(Store.store_account == user_in.username))
+                if store_check.scalar_one_or_none():
+                     raise HTTPException(status_code=400, detail="帳號已被店鋪帳號佔用")
                 
                 user.username = user_in.username
             
@@ -171,3 +185,52 @@ class UserService:
             await db.commit()
             return True
         return False
+    @staticmethod
+    async def update_user_profile(db: AsyncSession, user_id: int, user_in: StoreUserUpdate) -> User:
+        """更新使用者個人資料 (Username, Profile, PIN)"""
+        user = await db.get(User, user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        # 1. 更新基本資訊
+        if user_in.username is not None and user.username != user_in.username:
+            # Check uniqueness (User Table)
+            exists_query = select(User).where(User.username == user_in.username)
+            exists = await db.execute(exists_query)
+            if exists.scalar_one_or_none():
+                 raise HTTPException(status_code=400, detail="帳號已被其他使用者佔用")
+            
+            # Check uniqueness (Store Table)
+            store_check = await db.execute(select(Store).where(Store.store_account == user_in.username))
+            if store_check.scalar_one_or_none():
+                 raise HTTPException(status_code=400, detail="帳號已被店鋪帳號佔用")
+            
+            user.username = user_in.username
+        
+        if user_in.full_name is not None: user.full_name = user_in.full_name
+        if user_in.nickname is not None: user.nickname = user_in.nickname
+        if user_in.email is not None: user.email = user_in.email
+        if user_in.phone is not None: user.phone = user_in.phone
+        if user_in.gender is not None: user.gender = user_in.gender
+        if user_in.address is not None: user.address = user_in.address
+        if user_in.birthday is not None: user.birthday = user_in.birthday
+
+        # 2. 更新 PIN 碼 (同步更新所有店鋪關聯)
+        if user_in.pin is not None:
+            if user_in.pin == "":
+                pin_hash = None
+            else:
+                if not (6 <= len(user_in.pin) <= 8):
+                    raise HTTPException(status_code=400, detail="PIN must be 6-8 digits")
+                pin_hash = security.get_password_hash(user_in.pin)
+            
+            # 更新所有 StoreUser 紀錄
+            from app.models.user import StoreUser
+            assoc_query = select(StoreUser).where(StoreUser.user_id == user_id)
+            assocs = await db.execute(assoc_query)
+            for assoc in assocs.scalars().all():
+                assoc.pin_hash = pin_hash
+
+        await db.commit()
+        await db.refresh(user)
+        return user

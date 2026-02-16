@@ -258,6 +258,9 @@ python -m scripts.check_api_response
 - [x] 報表與訂單系統日期時區修正
 - [x] 報表與訂單系統日期時區修正
 - [x] 報表電子預覽與 PDF 匯出 (支援 A4 列印格式)
+- [x] **系統設定全自動同步 (Auto-Sync)**
+- [x] **管理者身分與權限側邊欄顯示**
+- [x] **登入認證安全性增強 (店鋪隔離與 PIN 碼補強)**
 - [ ] 進階財務報表系統 (開發中)：
   - 營收總覽 (Gross/Net Revenue, COGS, Gross Margin)
   - 銷售結構分析 (Top Products, Category Breakdown)

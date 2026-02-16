@@ -85,6 +85,24 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 </nav>
 
                 <div className={styles.footer}>
+                    <div className="px-3 mb-4">
+                        <div className="flex flex-col gap-1 px-1 mb-4">
+                            <div className="flex items-center justify-between">
+                                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">操作人</span>
+                                <span className="text-xs font-black text-slate-700 tracking-tight">{user?.full_name || user?.username}</span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">身分權限</span>
+                                <span className="text-[10px] font-black bg-[#D4AF37]/10 text-[#D4AF37] px-2 py-0.5 rounded-full uppercase tracking-tighter">
+                                    {user?.is_admin ? '全域管理員' : (
+                                        currentStore?.user_role?.toUpperCase() === 'OWNER' ? '店鋪負責人' :
+                                            currentStore?.user_role?.toUpperCase() === 'MANAGER' ? '店鋪主管' : '店員'
+                                    )}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                    <hr className="border-slate-200 mx-[-1rem] mb-4" />
                     <Link href="/pos">
                         <Button variant="outline" className={styles.posLink}>
                             <ExternalLink className="w-4 h-4" />

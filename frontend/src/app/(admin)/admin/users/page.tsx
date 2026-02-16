@@ -476,34 +476,46 @@ export default function AdminUsersPage() {
                                     />
                                 </div>
 
-                                <div className="md:col-span-2 pt-4 border-t border-gray-100">
-                                    <div className="flex items-center justify-between mb-2">
-                                        <label className="flex items-center gap-2 text-[11px] font-bold text-[#D4AF37] uppercase tracking-widest">
-                                            <Key className="w-4 h-4" />
-                                            POS 密碼 (PIN 登入碼, 6-8 位數字)
-                                        </label>
-                                        <button
-                                            type="button"
-                                            onClick={() => setShowPin(!showPin)}
-                                            className="text-gray-400 hover:text-[#D4AF37] transition-colors p-1"
-                                        >
-                                            {showPin ? <Eye size={16} /> : <EyeOff size={16} />}
-                                        </button>
+                                {(formData.role !== UserRole.OWNER || !editingUser || user?.is_admin) ? (
+                                    <div className="md:col-span-2 pt-4 border-t border-gray-100">
+                                        <div className="flex items-center justify-between mb-2">
+                                            <label className="flex items-center gap-2 text-[11px] font-bold text-[#D4AF37] uppercase tracking-widest">
+                                                <Key className="w-4 h-4" />
+                                                POS 密碼 (PIN 登入碼, 6-8 位數字)
+                                            </label>
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowPin(!showPin)}
+                                                className="text-gray-400 hover:text-[#D4AF37] transition-colors p-1"
+                                            >
+                                                {showPin ? <Eye size={16} /> : <EyeOff size={16} />}
+                                            </button>
+                                        </div>
+                                        <div className="relative">
+                                            <input
+                                                type={showPin ? "text" : "password"}
+                                                maxLength={8}
+                                                value={formData.pin}
+                                                onChange={(e) => setFormData({ ...formData, pin: e.target.value.replace(/\D/g, '') })}
+                                                className="w-full h-14 bg-slate-100/50 border-2 border-slate-200 rounded-xl focus:border-[#D4AF37] focus:bg-white focus:ring-4 focus:ring-[#D4AF37]/5 outline-none font-mono tracking-widest text-center text-3xl font-bold text-slate-800 placeholder:tracking-normal placeholder:font-sans placeholder:text-sm transition-all"
+                                                placeholder={editingUser?.has_pin ? "已設定 PIN (點此輸入新密碼)" : "請設定 6-8 位數字"}
+                                            />
+                                            <p className="text-[10px] text-gray-400 mt-2 text-center italic">
+                                                {editingUser?.has_pin ? '已設定密碼，若不修改請留空' : '請設定一組用於 POS 現場登入的碼'}
+                                            </p>
+                                        </div>
                                     </div>
-                                    <div className="relative">
-                                        <input
-                                            type={showPin ? "text" : "password"}
-                                            maxLength={8}
-                                            value={formData.pin}
-                                            onChange={(e) => setFormData({ ...formData, pin: e.target.value.replace(/\D/g, '') })}
-                                            className="w-full h-14 bg-slate-100/50 border-2 border-slate-200 rounded-xl focus:border-[#D4AF37] focus:bg-white focus:ring-4 focus:ring-[#D4AF37]/5 outline-none font-mono tracking-widest text-center text-3xl font-bold text-slate-800 placeholder:tracking-normal placeholder:font-sans placeholder:text-sm transition-all"
-                                            placeholder={editingUser?.has_pin ? "已設定 PIN (點此輸入新密碼)" : "請設定 6-8 位數字"}
-                                        />
-                                        <p className="text-[10px] text-gray-400 mt-2 text-center italic">
-                                            {editingUser?.has_pin ? '已設定密碼，若不修改請留空' : '請設定一組店員專屬的登入碼'}
-                                        </p>
+                                ) : (
+                                    <div className="md:col-span-2 pt-4 border-t border-gray-100 italic">
+                                        <div className="flex items-center gap-3 p-4 bg-slate-50 rounded-xl border border-slate-100">
+                                            <Key className="w-5 h-5 text-gray-400" />
+                                            <div>
+                                                <p className="text-xs font-bold text-gray-500">此 Owner 已存在，修改 PIN 碼請由本人操作</p>
+                                                <p className="text-[10px] text-gray-400 mt-0.5">現有的 Owner 權限請由其本人在個人設定中管理</p>
+                                            </div>
+                                        </div>
                                     </div>
-                                </div>
+                                )}
                             </div>
 
                             <div className="flex gap-3 mt-4">

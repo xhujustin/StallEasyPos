@@ -29,6 +29,16 @@ async def read_users_me(
     
     return ResponseBase(data=user_out)
 
+@router.put("/me/profile", response_model=ResponseBase[UserOut])
+async def update_my_profile(
+    db: SessionDep,
+    current_user_id: Annotated[int, Depends(get_current_user_id)],
+    user_in: StoreUserUpdate
+):
+    """使用者修改自己的個人資料與 PIN 碼"""
+    user = await UserService.update_user_profile(db, current_user_id, user_in)
+    return ResponseBase(data=user)
+
 @router.get("/", response_model=ResponseBase[List[StoreUserOut]])
 async def list_store_users(
     db: SessionDep,

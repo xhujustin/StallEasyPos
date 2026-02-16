@@ -12,6 +12,10 @@ export interface Store {
 interface User {
     id: number;
     username: string;
+    full_name?: string;
+    email?: string;
+    phone?: string;
+    is_admin: boolean;
     is_active: boolean;
     stores: Store[];
 }
@@ -21,9 +25,10 @@ interface AuthState {
     user: User | null;
     selectedStoreId: number | null;  // 選擇的店鋪ID
     isAuthenticated: boolean;
+    loginMode: 'STAFF' | 'ADMIN' | null;
 
     // Actions
-    setAuth: (token: string, user: User) => void;
+    setAuth: (token: string, user: User, mode: 'STAFF' | 'ADMIN') => void;
     setSelectedStore: (storeId: number) => void;  // 設定選擇的店鋪
     logout: () => void;
 }
@@ -35,11 +40,13 @@ export const useAuthStore = create<AuthState>()(
             user: null,
             selectedStoreId: null,  // 初始值
             isAuthenticated: false,
+            loginMode: null,
 
-            setAuth: (token, user) => set({
+            setAuth: (token, user, mode) => set({
                 token,
                 user,
-                isAuthenticated: true
+                isAuthenticated: true,
+                loginMode: mode
             }),
 
             setSelectedStore: (storeId) => set({
@@ -54,7 +61,8 @@ export const useAuthStore = create<AuthState>()(
                 token: null,
                 user: null,
                 selectedStoreId: null,  // 登出時清除選擇的店鋪
-                isAuthenticated: false
+                isAuthenticated: false,
+                loginMode: null
             }),
         }),
         {

@@ -86,5 +86,11 @@ export const userApi = {
     me: async () => {
         const response = await apiClient.get<ResponseBase<any>>('/users/me');
         return response.data;
+    },
+
+    // 修改當前使用者資料
+    updateProfile: async (data: UpdateStoreUser) => {
+        const response = await apiClient.put<ResponseBase<any>>('/users/me/profile', data);
+        return response.data;
     }
 };

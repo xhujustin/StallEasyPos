@@ -12,20 +12,38 @@ import {
     Save,
     CheckCircle2,
     AlertCircle,
-    Info
+    Info,
+    UserCircle,
+    Key,
+    Eye,
+    EyeOff,
+    ChevronDown,
+    ChevronUp,
+    RefreshCcw
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
+import { userApi } from '@/lib/api/users';
+
+// 簡易 Debounce Hook
+function useDebounce<T>(value: T, delay: number): T {
+    const [debouncedValue, setDebouncedValue] = useState<T>(value);
+    useEffect(() => {
+        const handler = setTimeout(() => setDebouncedValue(value), delay);
+        return () => clearTimeout(handler);
+    }, [value, delay]);
+    return debouncedValue;
+}
 
 export default function AdminSettingsPage() {
     const router = useRouter();
     const { user, selectedStoreId } = useAuthStore();
     const [mounted, setMounted] = useState(false);
     const [loading, setLoading] = useState(true);
-    const [saving, setSaving] = useState(false);
-    const [success, setSuccess] = useState(false);
+    const [syncing, setSyncing] = useState(false);
+    const [lastSynced, setLastSynced] = useState<Date | null>(null);
 
     // 設定狀態
     const [settings, setSettings] = useState({
@@ -40,258 +58,407 @@ export default function AdminSettingsPage() {
         language: 'zh-TW',
     });
 
+    // 個人資料狀態
+    const [profile, setProfile] = useState({
+        username: '',
+        full_name: '',
+        email: '',
+        phone: '',
+        pin: '',
+    });
+
+    const [showPin, setShowPin] = useState(false);
+    const [isProfileExpanded, setIsProfileExpanded] = useState(false);
+
+    // Debounced values
+    const debouncedSettings = useDebounce(settings, 1000);
+    const debouncedProfile = useDebounce(profile, 1000);
+
+    // 初始化標記，防止首次載入觸發儲存
+    const [isInitialLoad, setIsInitialLoad] = useState(true);
+
     useEffect(() => {
         setMounted(true);
     }, []);
 
     useEffect(() => {
         if (!mounted) return;
-
         if (!user || !selectedStoreId) {
             router.push('/select-store');
             return;
         }
-
-        loadSettings();
+        loadAllData();
     }, [mounted, user, selectedStoreId]);
 
-    const loadSettings = async () => {
+    const loadAllData = async () => {
         if (!selectedStoreId) return;
         try {
             setLoading(true);
-            const data = await settingsApi.getStoreProfile(selectedStoreId);
-            setSettings(data);
+            const [settingsData, userData] = await Promise.all([
+                settingsApi.getStoreProfile(selectedStoreId),
+                userApi.me()
+            ]);
+            setSettings(settingsData);
+            if (userData.data) {
+                setProfile({
+                    username: userData.data.username || '',
+                    full_name: userData.data.full_name || '',
+                    email: userData.data.email || '',
+                    phone: userData.data.phone || '',
+                    pin: '',
+                });
+            }
+            // 載入完成後延遲開啟監聽，避免初始化觸發同步
+            setTimeout(() => setIsInitialLoad(false), 500);
         } catch (error) {
-            console.error('載入設定失敗:', error);
+            console.error('載入資料失敗:', error);
         } finally {
             setLoading(false);
         }
     };
 
-    const handleSave = async () => {
-        if (!selectedStoreId) return;
-        try {
-            setSaving(true);
-            setSuccess(false);
+    // 自動同步店鋪設定
+    useEffect(() => {
+        if (isInitialLoad || loading || !selectedStoreId) return;
 
-            await settingsApi.updateBatch(selectedStoreId, {
-                scope: SettingScope.STORE,
-                settings: settings
-            });
+        const syncSettings = async () => {
+            setSyncing(true);
+            try {
+                await settingsApi.updateBatch(selectedStoreId, {
+                    scope: SettingScope.STORE,
+                    settings: debouncedSettings
+                });
+                setLastSynced(new Date());
+            } catch (error) {
+                console.error('店鋪設定同步失敗:', error);
+            } finally {
+                setSyncing(false);
+            }
+        };
 
-            setSuccess(true);
-            setTimeout(() => setSuccess(false), 3000);
-        } catch (error) {
-            console.error('儲存設定失敗:', error);
-            alert('儲存失敗，請重試');
-        } finally {
-            setSaving(false);
+        syncSettings();
+    }, [debouncedSettings]);
+
+    // 自動同步個人資料
+    useEffect(() => {
+        if (isInitialLoad || loading) return;
+
+        const syncProfile = async () => {
+            setSyncing(true);
+            try {
+                await userApi.updateProfile({
+                    username: debouncedProfile.username,
+                    full_name: debouncedProfile.full_name,
+                    email: debouncedProfile.email,
+                    phone: debouncedProfile.phone,
+                    pin: debouncedProfile.pin || undefined
+                });
+                setLastSynced(new Date());
+            } catch (error) {
+                console.error('個人資料同步失敗:', error);
+            } finally {
+                setSyncing(false);
+            }
+        };
+
+        syncProfile();
+    }, [debouncedProfile]);
+
+    const [showSyncedStatus, setShowSyncedStatus] = useState(false);
+
+    // 狀態自動隱藏邏輯 (2秒後關閉)
+    useEffect(() => {
+        if (lastSynced) {
+            setShowSyncedStatus(true);
+            const timer = setTimeout(() => setShowSyncedStatus(false), 2000);
+            return () => clearTimeout(timer);
         }
-    };
+    }, [lastSynced]);
 
     if (!mounted || loading) {
         return (
-            <div className="flex items-center justify-center min-h-[60vh]">
-                <div className="text-slate-400 animate-pulse font-medium">載入系統設定中...</div>
+            <div className="flex flex-col items-center justify-center min-h-[60vh]">
+                <div className="w-10 h-10 border-4 border-[#D4AF37]/20 border-t-[#D4AF37] rounded-full animate-spin mb-4" />
+                <div className="text-slate-400 font-medium">載入系統設定中...</div>
             </div>
         );
     }
 
-    const currentStore = user?.stores?.find((s) => s.id === selectedStoreId);
-
     return (
-        <div className="max-w-5xl mx-auto space-y-6 pb-20">
-            {/* Header */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="p-6 max-w-[1200px] mx-auto pb-32">
+            {/* Header Area */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
                 <div>
-                    <h1 className="text-2xl font-black text-slate-800 tracking-tight flex items-center gap-3">
-                        <span className="p-2 bg-[#D4AF37] rounded-xl text-white">
-                            <Store className="w-6 h-6" />
-                        </span>
-                        系統設定
+                    <h1 className="text-2xl font-black text-gray-800 tracking-tight flex items-center gap-3">
+                        系統設定 & 營運參數
                     </h1>
-                    <p className="text-slate-500 mt-1">管理店鋪內容、收據格式與營運參數</p>
+                    <p className="text-gray-500 text-sm mt-1">變更後將即時同步，無需手動儲存</p>
                 </div>
+
                 <div className="flex items-center gap-3">
-                    {success && (
-                        <span className="text-green-600 flex items-center gap-1.5 text-sm font-bold bg-green-50 px-3 py-1.5 rounded-full border border-green-100 animate-in fade-in slide-in-from-right-4">
-                            <CheckCircle2 className="w-4 h-4" />
-                            設定已儲存
-                        </span>
-                    )}
-                    <Button
-                        onClick={handleSave}
-                        disabled={saving}
-                        className="bg-[#D4AF37] hover:bg-[#B8962E] text-white px-8 h-12 rounded-xl font-bold shadow-lg shadow-[#D4AF37]/20 transition-all active:scale-95 flex items-center gap-2"
-                    >
-                        {saving ? (
-                            <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    <div className={cn(
+                        "flex items-center gap-2 px-4 py-2 rounded-xl border transition-all duration-300",
+                        syncing
+                            ? "bg-amber-50 text-amber-600 border-amber-100"
+                            : showSyncedStatus
+                                ? "bg-green-50 text-green-600 border-green-100"
+                                : "opacity-0 translate-x-4 pointer-events-none"
+                    )}>
+                        {syncing ? (
+                            <RefreshCcw size={16} className="animate-spin" />
                         ) : (
-                            <Save className="w-5 h-5" />
+                            <CheckCircle2 size={16} />
                         )}
-                        儲存變更
-                    </Button>
+                        <span className="text-xs font-black uppercase tracking-widest">
+                            {syncing ? '正在同步中...' : '已同步至雲端'}
+                        </span>
+                    </div>
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* 店鋪與收據設定 */}
-                <Card className="border-none shadow-sm overflow-hidden bg-white/60 backdrop-blur-sm">
-                    <CardHeader className="bg-slate-50/50 border-b border-slate-100">
-                        <CardTitle className="text-lg flex items-center gap-2 text-slate-800">
-                            <Receipt className="w-5 h-5 text-[#D4AF37]" />
-                            店鋪與收據資訊
-                        </CardTitle>
-                        <CardDescription>設定會顯示在收據與發票上的內容</CardDescription>
-                    </CardHeader>
-                    <CardContent className="p-6 space-y-5">
-                        <div className="space-y-2">
-                            <label className="text-sm font-bold text-slate-700">店鋪帳號 (登入憑證)</label>
-                            <Input
-                                placeholder="請輸入登入使用的店鋪帳號"
-                                value={settings.store_account}
-                                onChange={(e) => setSettings({ ...settings, store_account: e.target.value })}
-                                className="border-slate-200 focus:border-[#D4AF37] focus:ring-[#D4AF37]/5 h-11 font-mono font-bold text-slate-800 bg-white"
-                            />
-                            <p className="text-[11px] text-slate-400">這是您登入 POS 與後台時使用的帳號，變更後立即生效。</p>
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+                {/* Profile Card - Full Width */}
+                <div className="lg:col-span-12">
+                    <div className={cn(
+                        "bg-white rounded-2xl shadow-sm border transition-all duration-300 overflow-hidden",
+                        isProfileExpanded ? "border-[#D4AF37]/30 shadow-md" : "border-gray-200"
+                    )}>
+                        <div
+                            className={cn(
+                                "px-6 py-4 flex items-center justify-between cursor-pointer group",
+                                isProfileExpanded ? "bg-[#D4AF37]/5" : "bg-gray-50/50 hover:bg-gray-50"
+                            )}
+                            onClick={() => setIsProfileExpanded(!isProfileExpanded)}
+                        >
+                            <div className="flex items-center gap-4">
+                                <div className={cn(
+                                    "w-10 h-10 rounded-xl flex items-center justify-center transition-colors",
+                                    isProfileExpanded ? "bg-[#D4AF37] text-white" : "bg-gray-100 text-gray-400 group-hover:bg-gray-200"
+                                )}>
+                                    <UserCircle size={22} />
+                                </div>
+                                <div className="flex flex-col">
+                                    <h3 className="font-black text-gray-800 tracking-tight">個人帳號與安全</h3>
+                                    <p className="text-[11px] text-gray-400 font-medium">管理登入身分與個人專屬 PIN 碼</p>
+                                </div>
+                            </div>
+                            <ChevronDown className={cn("text-gray-400 transition-transform duration-300", isProfileExpanded && "rotate-180")} size={20} />
                         </div>
 
-                        <div className="space-y-2">
-                            <label className="text-sm font-bold text-slate-700">店鋪名稱</label>
-                            <Input
-                                placeholder="請輸入店鋪名稱"
-                                value={settings.store_name}
-                                onChange={(e) => setSettings({ ...settings, store_name: e.target.value })}
-                                className="border-slate-200 focus:border-[#D4AF37] focus:ring-[#D4AF37]/5 h-11 font-bold text-slate-800"
-                            />
-                            <p className="text-[11px] text-slate-400">這是您店鋪的對外顯示名稱。</p>
-                        </div>
+                        {isProfileExpanded && (
+                            <div className="p-6 border-t border-gray-100 animate-in slide-in-from-top-2">
+                                <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+                                    <div className="md:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-5">
+                                        <div className="space-y-1.5">
+                                            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">登入帳號</label>
+                                            <Input
+                                                value={profile.username}
+                                                onChange={(e) => setProfile({ ...profile, username: e.target.value })}
+                                                className="h-12 bg-gray-50 border-gray-200 focus:border-[#D4AF37] font-mono font-bold transition-all"
+                                            />
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">真實姓名</label>
+                                            <Input
+                                                value={profile.full_name}
+                                                onChange={(e) => setProfile({ ...profile, full_name: e.target.value })}
+                                                className="h-12 bg-gray-50 border-gray-200 focus:border-[#D4AF37] transition-all"
+                                            />
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">電子郵件</label>
+                                            <Input
+                                                value={profile.email}
+                                                onChange={(e) => setProfile({ ...profile, email: e.target.value })}
+                                                className="h-12 bg-gray-50 border-gray-200 focus:border-[#D4AF37] transition-all"
+                                            />
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">聯絡電話</label>
+                                            <Input
+                                                value={profile.phone}
+                                                onChange={(e) => setProfile({ ...profile, phone: e.target.value })}
+                                                className="h-12 bg-gray-50 border-gray-200 focus:border-[#D4AF37] transition-all"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100 flex flex-col justify-center gap-3">
+                                        <div className="flex items-center justify-between">
+                                            <label className="text-[10px] font-black text-[#D4AF37] uppercase tracking-[0.2em] flex items-center gap-2">
+                                                <Key size={14} /> POS 快速 PIN 碼
+                                            </label>
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowPin(!showPin)}
+                                                className="text-gray-400 hover:text-[#D4AF37] transition-colors"
+                                            >
+                                                {showPin ? <Eye size={16} /> : <EyeOff size={16} />}
+                                            </button>
+                                        </div>
+                                        <Input
+                                            type={showPin ? "text" : "password"}
+                                            maxLength={8}
+                                            value={profile.pin}
+                                            onChange={(e) => setProfile({ ...profile, pin: e.target.value.replace(/\D/g, '') })}
+                                            className="h-14 bg-white border-2 border-slate-200 rounded-xl focus:border-[#D4AF37] shadow-sm text-center text-3xl font-black font-mono tracking-widest text-[#D4AF37]"
+                                            placeholder="••••"
+                                        />
+                                        <p className="text-[10px] text-gray-400 text-center italic mt-1 leading-relaxed">
+                                            若不修改請保持空白<br />輸入 6-8 位數字
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
 
-                        <div className="space-y-2">
-                            <label className="text-sm font-bold text-slate-700">收據抬頭 / 店鋪簡稱</label>
-                            <Input
-                                placeholder="例如：StallEasy 行動餐飲"
-                                value={settings.receipt_header}
-                                onChange={(e) => setSettings({ ...settings, receipt_header: e.target.value })}
-                                className="border-slate-200 focus:border-[#D4AF37] focus:ring-[#D4AF37]/5 h-11"
-                            />
+                {/* Left Side - Store Settings */}
+                <div className="lg:col-span-7 space-y-6">
+                    <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+                        <div className="px-6 py-4 bg-gray-50/80 border-b border-gray-100 flex items-center gap-3">
+                            <Receipt size={18} className="text-[#D4AF37]" />
+                            <h3 className="font-black text-gray-800 tracking-tight">店鋪營運與收據</h3>
                         </div>
-
-                        <div className="space-y-2">
-                            <label className="text-sm font-bold text-slate-700">統一編號</label>
-                            <Input
-                                placeholder="8 位數數字"
-                                value={settings.business_id}
-                                onChange={(e) => setSettings({ ...settings, business_id: e.target.value })}
-                                className="border-slate-200 focus:border-[#D4AF37] focus:ring-[#D4AF37]/5 h-11"
-                            />
-                        </div>
-
-                        <div className="space-y-2">
-                            <label className="text-sm font-bold text-slate-700">收據頁尾文字</label>
-                            <textarea
-                                rows={3}
-                                placeholder="例如：週一公休 / 歡迎下次光臨"
-                                value={settings.receipt_footer}
-                                onChange={(e) => setSettings({ ...settings, receipt_footer: e.target.value })}
-                                className="w-full rounded-md border border-slate-200 p-3 text-sm focus:outline-none focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37]/5"
-                            />
-                        </div>
-                    </CardContent>
-                </Card>
-
-                {/* 稅務與環境設定 */}
-                <div className="space-y-6">
-                    <Card className="border-none shadow-sm overflow-hidden bg-white/60 backdrop-blur-sm">
-                        <CardHeader className="bg-slate-50/50 border-b border-slate-100">
-                            <CardTitle className="text-lg flex items-center gap-2 text-slate-800">
-                                <Percent className="w-5 h-5 text-[#D4AF37]" />
-                                稅務設定
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent className="p-6 space-y-5">
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-2">
-                                    <label className="text-sm font-bold text-slate-700">稅率 (%)</label>
+                        <div className="p-6 space-y-6">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">店鋪代表帳號</label>
                                     <Input
-                                        type="number"
-                                        value={settings.tax_rate}
-                                        onChange={(e) => setSettings({ ...settings, tax_rate: parseFloat(e.target.value) })}
-                                        className="border-slate-200 focus:border-[#D4AF37] focus:ring-[#D4AF37]/5 h-11"
+                                        value={settings.store_account}
+                                        onChange={(e) => setSettings({ ...settings, store_account: e.target.value })}
+                                        className="h-12 bg-gray-50 border-gray-200 focus:border-[#D4AF37] font-mono font-bold"
+                                    />
+                                    <p className="text-[10px] text-gray-400 italic mt-1">此帳號用於 POS 入口快速切換</p>
+                                </div>
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">店鋪全名</label>
+                                    <Input
+                                        value={settings.store_name}
+                                        onChange={(e) => setSettings({ ...settings, store_name: e.target.value })}
+                                        className="h-12 bg-gray-50 border-gray-200 focus:border-[#D4AF37] font-bold"
                                     />
                                 </div>
-                                <div className="space-y-2">
-                                    <label className="text-sm font-bold text-slate-700">顯示模式</label>
-                                    <select
-                                        value={settings.tax_mode}
-                                        onChange={(e) => setSettings({ ...settings, tax_mode: e.target.value })}
-                                        className="w-full h-11 px-3 bg-white border border-slate-200 rounded-md text-sm focus:outline-none focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37]/5"
-                                    >
-                                        <option value="inclusive">內含稅</option>
-                                        <option value="exclusive">未稅 (外加)</option>
-                                    </select>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">收據抬頭名稱</label>
+                                    <Input
+                                        value={settings.receipt_header}
+                                        onChange={(e) => setSettings({ ...settings, receipt_header: e.target.value })}
+                                        className="h-12 bg-gray-50 border-gray-200 focus:border-[#D4AF37]"
+                                    />
+                                </div>
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">統一編號</label>
+                                    <Input
+                                        value={settings.business_id}
+                                        onChange={(e) => setSettings({ ...settings, business_id: e.target.value })}
+                                        className="h-12 bg-gray-50 border-gray-200 focus:border-[#D4AF37] font-mono"
+                                    />
                                 </div>
                             </div>
-                            <div className="bg-amber-50 p-3 rounded-lg flex gap-3">
-                                <Info className="w-5 h-5 text-amber-500 shrink-0" />
-                                <p className="text-[11px] text-amber-700 leading-relaxed">
-                                    稅務設定會影響結帳後的金額計算與報表顯示。台灣一般門市建議使用「內含稅」且稅率為 5%。
+
+                            <div className="space-y-1.5">
+                                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">收據頁尾訊息</label>
+                                <textarea
+                                    rows={3}
+                                    value={settings.receipt_footer}
+                                    onChange={(e) => setSettings({ ...settings, receipt_footer: e.target.value })}
+                                    className="w-full rounded-xl bg-gray-50 border border-gray-200 p-4 text-sm focus:outline-none focus:border-[#D4AF37] focus:ring-4 focus:ring-[#D4AF37]/5 transition-all outline-none"
+                                />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Right Side - Parameters */}
+                <div className="lg:col-span-5 space-y-6">
+                    {/* Tax Card */}
+                    <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+                        <div className="px-6 py-4 bg-gray-50/80 border-b border-gray-100 flex items-center gap-3">
+                            <Percent size={18} className="text-[#D4AF37]" />
+                            <h3 className="font-black text-gray-800 tracking-tight">稅務參數設定</h3>
+                        </div>
+                        <div className="p-6 space-y-5">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">營業稅率 (%)</label>
+                                    <Input
+                                        type="number"
+                                        value={isNaN(settings.tax_rate) ? '' : settings.tax_rate}
+                                        onChange={(e) => {
+                                            const val = e.target.value === '' ? 0 : parseFloat(e.target.value);
+                                            setSettings({ ...settings, tax_rate: val });
+                                        }}
+                                        className="h-12 bg-gray-50 border-gray-200 focus:border-[#D4AF37] font-bold"
+                                    />
+                                </div>
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">課稅模式</label>
+                                    <div className="relative">
+                                        <select
+                                            value={settings.tax_mode}
+                                            onChange={(e) => setSettings({ ...settings, tax_mode: e.target.value })}
+                                            className="w-full h-12 px-4 bg-gray-50 border border-gray-200 rounded-xl focus:border-[#D4AF37] focus:ring-4 focus:ring-[#D4AF37]/5 outline-none transition-all text-sm font-bold appearance-none"
+                                        >
+                                            <option value="inclusive">內含 (預設)</option>
+                                            <option value="exclusive">外加</option>
+                                        </select>
+                                        <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={16} />
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="flex gap-4 p-4 bg-amber-50/50 rounded-2xl border border-amber-100/50">
+                                <Info className="text-amber-500 shrink-0 mt-0.5" size={16} />
+                                <p className="text-[11px] text-amber-800 leading-relaxed font-medium">
+                                    台灣地區建議使用「內含 5%」。系統會自動根據此設定產出正確的發票金額明細。
                                 </p>
                             </div>
-                        </CardContent>
-                    </Card>
+                        </div>
+                    </div>
 
-                    <Card className="border-none shadow-sm overflow-hidden bg-white/60 backdrop-blur-sm">
-                        <CardHeader className="bg-slate-50/50 border-b border-slate-100">
-                            <CardTitle className="text-lg flex items-center gap-2 text-slate-800">
-                                <Globe className="w-5 h-5 text-[#D4AF37]" />
-                                地區與語系
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent className="p-6 space-y-5">
-                            <div className="space-y-2">
-                                <label className="text-sm font-bold text-slate-700">系統時區</label>
-                                <select
-                                    value={settings.timezone}
-                                    onChange={(e) => setSettings({ ...settings, timezone: e.target.value })}
-                                    className="w-full h-11 px-3 bg-white border border-slate-200 rounded-md text-sm focus:outline-none focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37]/5"
-                                >
-                                    <option value="Asia/Taipei">Asia/Taipei (台北)</option>
-                                    <option value="Asia/Tokyo">Asia/Tokyo (東京)</option>
-                                    <option value="UTC">UTC</option>
-                                </select>
+                    {/* Environment Card */}
+                    <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+                        <div className="px-6 py-4 bg-gray-50/80 border-b border-gray-100 flex items-center gap-3">
+                            <Globe size={18} className="text-[#D4AF37]" />
+                            <h3 className="font-black text-gray-800 tracking-tight">環境語系與地區</h3>
+                        </div>
+                        <div className="p-6 space-y-5">
+                            <div className="space-y-1.5">
+                                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">系統時區偏移 (Timezone)</label>
+                                <div className="relative">
+                                    <select
+                                        value={settings.timezone}
+                                        onChange={(e) => setSettings({ ...settings, timezone: e.target.value })}
+                                        className="w-full h-12 px-4 bg-gray-50 border border-gray-200 rounded-xl focus:border-[#D4AF37] focus:ring-4 focus:ring-[#D4AF37]/5 outline-none transition-all text-sm font-bold appearance-none"
+                                    >
+                                        <option value="Asia/Taipei">Asia/Taipei (GMT+8)</option>
+                                        <option value="Asia/Tokyo">Asia/Tokyo (GMT+9)</option>
+                                        <option value="UTC">UTC (GMT+0)</option>
+                                    </select>
+                                    <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={16} />
+                                </div>
                             </div>
-                            <div className="space-y-2">
-                                <label className="text-sm font-bold text-slate-700">介面語言</label>
-                                <select
-                                    value={settings.language}
-                                    onChange={(e) => setSettings({ ...settings, language: e.target.value })}
-                                    className="w-full h-11 px-3 bg-white border border-slate-200 rounded-md text-sm focus:outline-none focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37]/5"
-                                >
-                                    <option value="zh-TW">繁體中文 (台灣)</option>
-                                    <option value="en-US">English (United States)</option>
-                                </select>
+                            <div className="space-y-1.5">
+                                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">系統語言 (Language)</label>
+                                <div className="relative">
+                                    <select
+                                        value={settings.language}
+                                        onChange={(e) => setSettings({ ...settings, language: e.target.value })}
+                                        className="w-full h-12 px-4 bg-gray-50 border border-gray-200 rounded-xl focus:border-[#D4AF37] focus:ring-4 focus:ring-[#D4AF37]/5 outline-none transition-all text-sm font-bold appearance-none"
+                                    >
+                                        <option value="zh-TW">繁體中文 (台灣)</option>
+                                        <option value="en-US">English (Western)</option>
+                                    </select>
+                                    <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={16} />
+                                </div>
                             </div>
-                        </CardContent>
-                    </Card>
+                        </div>
+                    </div>
                 </div>
-            </div>
-
-            <div className="flex justify-end gap-3 mt-4 border-t border-slate-200 pt-6">
-                <Button
-                    variant="ghost"
-                    onClick={() => router.back()}
-                    className="text-slate-500 font-bold px-6"
-                >
-                    取消
-                </Button>
-                <Button
-                    onClick={handleSave}
-                    disabled={saving}
-                    className="bg-[#D4AF37] hover:bg-[#B8962E] text-white px-10 h-12 rounded-xl font-bold"
-                >
-                    確認儲存
-                </Button>
             </div>
         </div>
     );

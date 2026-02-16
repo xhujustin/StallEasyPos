@@ -19,7 +19,7 @@ async def login(
     """
     OAuth2 相容登入接口
     """
-    user = await AuthService.authenticate_user(db, form_data.username, form_data.password)
+    user, mode = await AuthService.authenticate_user(db, form_data.username, form_data.password)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -27,7 +27,7 @@ async def login(
             headers={"WWW-Authenticate": "Bearer"},
         )
     
-    token = await AuthService.create_tokens(user.id)
+    token = await AuthService.create_tokens(user.id, auth_mode=mode)
     return ResponseBase(data=token)
 
 @router.post("/register", response_model=ResponseBase)

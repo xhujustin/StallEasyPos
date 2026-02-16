@@ -11,6 +11,7 @@ import styles from './page.module.css';
 import { cn } from '@/lib/utils';
 import { authApi } from '@/lib/api/auth';
 import { useAuthStore } from '@/lib/store/auth-store';
+import { jwtDecode } from 'jwt-decode';
 
 export default function LoginPage() {
     const router = useRouter();
@@ -111,34 +112,51 @@ export default function LoginPage() {
             // 儲存帳號以利下次自動填入
             localStorage.setItem('remembered_username', username);
 
-            // Set cookie for middleware/server-side check
+            // 1. 解析 Token 中的 Mode
+            const decoded: any = jwtDecode(access_token);
+            const loginMode = decoded.mode || 'ADMIN';
+
+            // 2. Set cookie for middleware/server-side check
             document.cookie = `token=${access_token}; path=/; max-age=${7 * 24 * 60 * 60}`;
 
-            // 2. Set token temporarily to allow getMe
-            useAuthStore.getState().setAuth(access_token, { id: 0, username: 'loading...', is_active: true, stores: [] });
+            // 3. Set token temporarily to allow getMe
+            useAuthStore.getState().setAuth(access_token, { id: 0, username: 'loading...', is_admin: false, is_active: true, stores: [] }, loginMode);
 
-            // 3. Get User Info
+            // 4. Get User Info
             const meResponse = await authApi.getMe();
             const user = meResponse;
 
-            // 4. Update Store (先清除舊的selectedStoreId)
+            // 5. Update Store (先清除舊的selectedStoreId)
             useAuthStore.getState().setSelectedStore(null as any);
-            useAuthStore.getState().setAuth(access_token, user);
+            useAuthStore.getState().setAuth(access_token, user, loginMode);
 
-            // 5. Redirect based on stores count
+            // 6. Redirect based on login mode and roles
             const isAdmin = (user as any).is_admin;
             const stores = user.stores || [];
 
-            if (!isAdmin && stores.length === 0) {
-                setError('此帳號沒有關聯任何店鋪,請聯絡管理員');
-                return;
-            } else if (stores.length === 1 && !isAdmin) {
-                // 只有一個店鋪,直接設定並跳轉
-                useAuthStore.getState().setSelectedStore(stores[0].id);
-                window.location.href = '/pos';
+            if (loginMode === 'STAFF') {
+                // 如果是店鋪模式登入，不論是誰，都直接進 POS 或店鋪選擇
+                if (stores.length === 1) {
+                    useAuthStore.getState().setSelectedStore(stores[0].id);
+                    window.location.href = '/pos';
+                } else {
+                    window.location.href = '/select-store';
+                }
             } else {
-                // 多個店鋪,跳轉至選擇頁面
-                window.location.href = '/select-store';
+                // 如果是個人管理登入模式
+                if (!isAdmin && stores.length === 0) {
+                    setError('此帳號沒有關聯任何店鋪,請聯絡管理員');
+                    return;
+                }
+
+                // 管理模式預設進入店鋪選擇（若多店）或直接導向（待定）
+                // 為了方便店主，單店店主管理模式也可直接導向
+                if (stores.length === 1 && !isAdmin) {
+                    useAuthStore.getState().setSelectedStore(stores[0].id);
+                    window.location.href = '/admin'; // 管理模式導往 Admin
+                } else {
+                    window.location.href = '/select-store';
+                }
             }
 
         } catch (err: any) {
@@ -171,37 +189,37 @@ export default function LoginPage() {
                                 onFocus={() => setActiveField('username')}
                                 onChange={(e) => setUsername(e.target.value)}
                                 className={cn(
-                                    "text-center text-3xl tracking-widest font-bold h-16 bg-slate-50 border-2 transition-all duration-200",
+                                    "text-center text-3xl tracking-widest font-bold h-16 bg-slate-50 border-2 transition-all duration-200 px-14",
                                     activeField === 'username' ? "border-[#D4AF37] bg-white ring-4 ring-[#D4AF37]/5" : "border-slate-100"
                                 )}
                                 autoComplete="username"
                             />
                         </div>
 
-                        <div className="space-y-1 relative">
-                            <div className="flex justify-between items-center pl-1">
-                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">POS PIN 碼</label>
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">POS PIN 碼</label>
+                            <div className="relative group">
+                                <Input
+                                    type={showPin ? "text" : "password"}
+                                    value={pin}
+                                    onFocus={() => setActiveField('pin')}
+                                    readOnly
+                                    placeholder="••••••"
+                                    className={cn(
+                                        "text-center text-3xl tracking-widest font-bold h-16 bg-slate-50 border-2 transition-all duration-200 px-14",
+                                        activeField === 'pin' ? "border-[#D4AF37] bg-white ring-4 ring-[#D4AF37]/5" : "border-slate-100"
+                                    )}
+                                    autoComplete="current-password"
+                                    suppressHydrationWarning
+                                />
                                 <button
                                     type="button"
                                     onClick={() => setShowPin(!showPin)}
-                                    className="text-slate-400 hover:text-[#D4AF37] transition-colors mb-1"
+                                    className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300 hover:text-[#D4AF37] transition-colors p-1"
                                 >
-                                    {showPin ? <Eye size={14} /> : <EyeOff size={14} />}
+                                    {showPin ? <Eye size={20} /> : <EyeOff size={20} />}
                                 </button>
                             </div>
-                            <Input
-                                type={showPin ? "text" : "password"}
-                                value={pin}
-                                onFocus={() => setActiveField('pin')}
-                                readOnly
-                                placeholder="••••••"
-                                className={cn(
-                                    "text-center text-3xl tracking-widest font-bold h-16 bg-slate-50 border-2 transition-all duration-200",
-                                    activeField === 'pin' ? "border-[#D4AF37] bg-white ring-4 ring-[#D4AF37]/5" : "border-slate-100"
-                                )}
-                                autoComplete="current-password"
-                                suppressHydrationWarning
-                            />
                         </div>
                     </div>
 
