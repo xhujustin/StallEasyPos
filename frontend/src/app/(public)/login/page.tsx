@@ -5,22 +5,42 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import styles from './page.module.css';
+import { cn } from '@/lib/utils';
 import { authApi } from '@/lib/api/auth';
 import { useAuthStore } from '@/lib/store/auth-store';
 
 export default function LoginPage() {
     const router = useRouter();
+    const [username, setUsername] = useState('');
     const [pin, setPin] = useState('');
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
+    const [activeField, setActiveField] = useState<'username' | 'pin'>('username');
+    const [showPin, setShowPin] = useState(false);
 
-    const handlePinInput = (num: string) => {
-        if (pin.length < 8) { // Changed to 8 digits
-            setPin((prev) => prev + num);
-            setError('');
+    // Load remembered username on mount
+    useEffect(() => {
+        const rememberedUsername = localStorage.getItem('remembered_username');
+        if (rememberedUsername) {
+            setUsername(rememberedUsername);
+            setActiveField('pin'); // 帳號已自動填入，焦點移至 PIN
+        }
+    }, []);
+
+    const handleInput = (num: string) => {
+        if (activeField === 'username') {
+            if (username.length < 20) {
+                setUsername(prev => prev + num);
+                setError('');
+            }
+        } else {
+            if (pin.length < 8) {
+                setPin((prev) => prev + num);
+                setError('');
+            }
         }
     };
 
@@ -28,72 +48,77 @@ export default function LoginPage() {
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.key >= '0' && e.key <= '9') {
-                handlePinInput(e.key);
+                e.preventDefault();
+                handleInput(e.key);
             } else if (e.key === 'Backspace') {
+                e.preventDefault();
                 handleBackspace();
             } else if (e.key === 'Enter') {
-                // Prevent default form submission if any
                 e.preventDefault();
-                // Trigger login if PIN length > 3
-                if (pin.length >= 4) {
+                if (activeField === 'username' && username.length > 0) {
+                    setActiveField('pin');
+                } else if (pin.length >= 4) {
                     handleLogin();
                 }
+            } else if (e.key === 'Tab') {
+                e.preventDefault();
+                setActiveField(prev => prev === 'username' ? 'pin' : 'username');
+            }
+            // Allow normal alphanumeric typing if keyboard is physical
+            if (activeField === 'username' && /^[a-zA-Z0-9_]$/.test(e.key)) {
+                // handleInput already handles 0-9, we can let the input field handle others or manually add
+                // Since we have a virtual keypad, we'll focus on numbers/backspace for now but allow keys
             }
         };
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [pin]);
+    }, [pin, username, activeField]);
 
     const handleClear = () => {
-        setPin('');
+        if (activeField === 'username') setUsername('');
+        else setPin('');
         setError('');
     };
 
     const handleBackspace = () => {
-        setPin((prev) => prev.slice(0, -1));
+        if (activeField === 'username') setUsername(prev => prev.slice(0, -1));
+        else setPin((prev) => prev.slice(0, -1));
         setError('');
     };
 
     const handleLogin = async () => {
+        if (!username) {
+            setError('請輸入店鋪帳號');
+            return;
+        }
+        if (pin.length < 4) {
+            setError('PIN 碼長度不足');
+            return;
+        }
+
         setLoading(true);
         setError('');
 
         try {
-            // Map PIN to credentials (Temporary for V1 connection test)
-            // In production, this should be replaced by a real PIN auth endpoint or user/pass input
-            let username = '';
-            let password = '';
+            // 使用帳號與 PIN 碼進行登入
+            // 後端 AuthService 統一使用 PIN 驗證
+            const { access_token } = await authApi.login({
+                username: username,
+                password: pin
+            });
 
-            if (pin === '000000') {
-                username = 'admin'; // Default admin
-                password = 'password';
-            } else if (pin === '111111') {
-                username = 'staff';
-                password = 'password';
-            } else {
-                // Try to use PIN as password for a generic user? 
-                // For now, strict mapping to avoid confusion
-                throw new Error('無效的 PIN 碼');
-            }
-
-            // 1. Login to get token
-            const { access_token } = await authApi.login({ username, password });
+            // 儲存帳號以利下次自動填入
+            localStorage.setItem('remembered_username', username);
 
             // Set cookie for middleware/server-side check
             document.cookie = `token=${access_token}; path=/; max-age=${7 * 24 * 60 * 60}`;
-            document.cookie = `role=${username === 'admin' ? 'owner' : 'staff'}; path=/; max-age=${7 * 24 * 60 * 60}`;
 
             // 2. Set token temporarily to allow getMe
             useAuthStore.getState().setAuth(access_token, { id: 0, username: 'loading...', is_active: true, stores: [] });
 
             // 3. Get User Info
             const meResponse = await authApi.getMe();
-            // meResponse is { data: User } based on ResponseBase[UserOut] wrapper in backend?
-            // Wait, backend returns ResponseBase(data=user). 
-            // So response.data in axios is ResponseBase. 
-            // So response.data.data is the user.
-
             const user = meResponse;
 
             // 4. Update Store (先清除舊的selectedStoreId)
@@ -101,24 +126,28 @@ export default function LoginPage() {
             useAuthStore.getState().setAuth(access_token, user);
 
             // 5. Redirect based on stores count
-            if (!user.stores || user.stores.length === 0) {
+            const isAdmin = (user as any).is_admin;
+            const stores = user.stores || [];
+
+            if (!isAdmin && stores.length === 0) {
                 setError('此帳號沒有關聯任何店鋪,請聯絡管理員');
                 return;
-            } else if (user.stores.length === 1) {
+            } else if (stores.length === 1 && !isAdmin) {
                 // 只有一個店鋪,直接設定並跳轉
-                useAuthStore.getState().setSelectedStore(user.stores[0].id);
+                useAuthStore.getState().setSelectedStore(stores[0].id);
                 window.location.href = '/pos';
             } else {
                 // 多個店鋪,跳轉至選擇頁面
                 window.location.href = '/select-store';
             }
 
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
         } catch (err: any) {
             console.error('Login failed:', err);
-            // Handle Axios error or logic error
-            const msg = err.response?.data?.detail || err.message || '登入失敗，請檢查 PIN 碼或網絡連線';
+            const msg = err.response?.data?.detail || err.message || '登入失敗，請檢查帳號、PIN 碼或網路連線';
             setError(msg);
+            // 登入失敗時，保留帳號，僅清除 PIN 碼並聚焦
+            setPin('');
+            setActiveField('pin');
         } finally {
             setLoading(false);
         }
@@ -127,21 +156,53 @@ export default function LoginPage() {
     return (
         <div className={styles.container}>
             <Card className={styles.card}>
-                <CardHeader className={styles.header}>
+                <CardHeader className={cn(styles.header, "pb-2")}>
                     <CardTitle className={styles.title}>StallEasy POS</CardTitle>
-                    <div className={styles.subtitle}>請輸入員工 PIN 碼</div>
+                    <div className={styles.subtitle}>請輸入店鋪帳號與 PIN 碼</div>
                 </CardHeader>
-                <CardContent className="space-y-6">
-                    <div className="flex justify-center">
-                        <Input
-                            type="password"
-                            value={pin}
-                            readOnly
-                            placeholder="••••••"
-                            className="text-center text-2xl tracking-widest font-mono h-14 bg-white/50 border-slate-200 focus:border-slate-400 focus:ring-slate-200 transition-all duration-300"
-                            autoComplete="off"
-                            suppressHydrationWarning
-                        />
+                <CardContent className="space-y-4">
+                    <div className="space-y-4">
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">店鋪帳號</label>
+                            <Input
+                                type="text"
+                                placeholder="••••••"
+                                value={username}
+                                onFocus={() => setActiveField('username')}
+                                onChange={(e) => setUsername(e.target.value)}
+                                className={cn(
+                                    "text-center text-3xl tracking-widest font-bold h-16 bg-slate-50 border-2 transition-all duration-200",
+                                    activeField === 'username' ? "border-[#D4AF37] bg-white ring-4 ring-[#D4AF37]/5" : "border-slate-100"
+                                )}
+                                autoComplete="username"
+                            />
+                        </div>
+
+                        <div className="space-y-1 relative">
+                            <div className="flex justify-between items-center pl-1">
+                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">POS PIN 碼</label>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowPin(!showPin)}
+                                    className="text-slate-400 hover:text-[#D4AF37] transition-colors mb-1"
+                                >
+                                    {showPin ? <Eye size={14} /> : <EyeOff size={14} />}
+                                </button>
+                            </div>
+                            <Input
+                                type={showPin ? "text" : "password"}
+                                value={pin}
+                                onFocus={() => setActiveField('pin')}
+                                readOnly
+                                placeholder="••••••"
+                                className={cn(
+                                    "text-center text-3xl tracking-widest font-bold h-16 bg-slate-50 border-2 transition-all duration-200",
+                                    activeField === 'pin' ? "border-[#D4AF37] bg-white ring-4 ring-[#D4AF37]/5" : "border-slate-100"
+                                )}
+                                autoComplete="current-password"
+                                suppressHydrationWarning
+                            />
+                        </div>
                     </div>
 
                     {error && (
@@ -158,7 +219,7 @@ export default function LoginPage() {
                                 key={num}
                                 variant="outline"
                                 className={styles.keyButton}
-                                onClick={() => handlePinInput(num.toString())}
+                                onClick={() => handleInput(num.toString())}
                             >
                                 {num}
                             </Button>
@@ -173,7 +234,7 @@ export default function LoginPage() {
                         <Button
                             variant="outline"
                             className={styles.keyButton}
-                            onClick={() => handlePinInput('0')}
+                            onClick={() => handleInput('0')}
                         >
                             0
                         </Button>
@@ -195,7 +256,7 @@ export default function LoginPage() {
                     </Button>
 
                     <div className={styles.hint}>
-                        Default Owner PIN: 000000 | Staff: 111111
+                        不分職位，請統一使用店鋪帳號與 PIN 碼登入
                     </div>
                 </CardContent>
             </Card>

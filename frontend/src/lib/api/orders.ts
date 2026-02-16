@@ -49,6 +49,7 @@ export interface OrderItem {
     product_id: number;
     name_snapshot: string;
     price_snapshot: number;
+    cost_snapshot?: number;
     quantity: number;
     note?: string;
     options?: any[]; // JSONB from backend

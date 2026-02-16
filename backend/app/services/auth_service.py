@@ -16,15 +16,30 @@ class AuthService:
     """
     
     @staticmethod
-    async def authenticate_user(db: AsyncSession, username: str, password: str) -> Optional[User]:
-        """驗證使用者帳號密碼"""
+    async def authenticate_user(db: AsyncSession, username: str, pin: str) -> Optional[User]:
+        """
+        統一驗證入口：帳號 + PIN 碼
+        """
         result = await db.execute(select(User).where(User.username == username))
         user = result.scalars().first()
         if not user:
             return None
-        if not security.verify_password(password, user.hashed_password):
-            return None
-        return user
+
+        # 1. 如果是全域管理員且 user 表上有 hashed_password (此時作為密碼或 PIN 存放)
+        # 為了轉型，我們優先檢查 StoreUser 中的 PIN
+        from app.models.user import StoreUser
+        assoc_result = await db.execute(select(StoreUser).where(StoreUser.user_id == user.id))
+        store_users = assoc_result.scalars().all()
+        
+        for su in store_users:
+            if su.pin_hash and security.verify_password(pin, su.pin_hash):
+                return user
+        
+        # 2. 備位方案：支援舊有的 User.hashed_password 作為 PIN 驗證 (例如 Admin 初次設定時)
+        if user.hashed_password and security.verify_password(pin, user.hashed_password):
+            return user
+                
+        return None
 
     @staticmethod
     async def create_tokens(user_id: int) -> Token:

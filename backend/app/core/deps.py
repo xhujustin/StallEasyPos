@@ -33,3 +33,25 @@ async def get_current_user_id(token: TokenDep) -> int:
         return int(user_id)
     except (JWTError, ValueError):
         raise credentials_exception
+from app.models.user import User
+
+async def get_current_user(
+    db: SessionDep, 
+    user_id: Annotated[int, Depends(get_current_user_id)]
+) -> User:
+    """取得當前登入的使用者物件"""
+    user = await db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user
+
+async def get_current_admin(
+    current_user: Annotated[User, Depends(get_current_user)]
+) -> User:
+    """驗證是否為全域管理員"""
+    if not current_user.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="The user does not have enough privileges"
+        )
+    return current_user

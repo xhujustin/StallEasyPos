@@ -10,7 +10,7 @@ import { ReportPreviewModal } from '@/components/reports/ReportPreviewModal'; //
 
 export default function AdminReportsPage() {
     const router = useRouter();
-    const { selectedStoreId } = useAuthStore();
+    const { selectedStoreId, user } = useAuthStore();
     const [shifts, setShifts] = useState<Shift[]>([]);
     const [loading, setLoading] = useState(false);
     const [expandedRows, setExpandedRows] = useState<Record<number, boolean>>({});
@@ -84,9 +84,14 @@ export default function AdminReportsPage() {
     );
 
     const handleExport = () => {
-        if (!selectedStoreId) return;
+        if (!selectedStoreId || !user) return;
+
+        const store = user?.stores?.find(s => s.id === selectedStoreId);
+        const storeName = store?.name || '未知店鋪';
+
         const query = new URLSearchParams({
             storeId: selectedStoreId.toString(),
+            storeName: storeName,
             startDate: startDate,
             endDate: endDate
         }).toString();

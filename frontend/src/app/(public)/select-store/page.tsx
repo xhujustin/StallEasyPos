@@ -27,8 +27,10 @@ export default function SelectStorePage() {
             return;
         }
 
-        // 如果沒有店鋪,跳轉回登入頁
-        if (!user.stores || user.stores.length === 0) {
+        // 如果沒有店鋪且不是全域管理員,跳轉回登入頁
+        const isAdmin = (user as any)?.is_admin;
+        const stores = user?.stores || [];
+        if (!isAdmin && stores.length === 0) {
             router.push('/login');
             return;
         }
@@ -42,7 +44,10 @@ export default function SelectStorePage() {
         return null;
     }
 
-    if (!user || !user.stores || user.stores.length === 0) {
+    const isAdmin = (user as any)?.is_admin;
+    const stores = user?.stores || [];
+
+    if (!user || (!isAdmin && stores.length === 0)) {
         return null; // 等待重定向
     }
 
@@ -53,20 +58,20 @@ export default function SelectStorePage() {
 
     const handleManageStores = () => {
         // 如果還沒選擇店鋪,自動選擇第一個店鋪
-        if (!selectedStoreId && user.stores.length > 0) {
-            const firstStore = user.stores[0];
+        if (!selectedStoreId && stores.length > 0) {
+            const firstStore = stores[0];
             setSelectedStore(firstStore.id);
         }
         router.push('/admin/dashboard');
     };
 
     // 判斷使用者是否有owner角色
-    const hasOwnerRole = user.stores.some(
-        (store) => store.user_role === 'owner' || store.owner_id === user.id
+    const hasOwnerRole = isAdmin || stores.some(
+        (store: any) => store.user_role === 'owner' || store.owner_id === user.id
     );
 
     // 取得角色標籤
-    const getRoleBadge = (store: typeof user.stores[0]) => {
+    const getRoleBadge = (store: any) => {
         if (store.user_role) {
             switch (store.user_role) {
                 case 'owner':
@@ -80,7 +85,7 @@ export default function SelectStorePage() {
             }
         }
         // 備用判斷
-        return store.owner_id === user.id ? '老闆' : '店員';
+        return store.owner_id === user?.id ? '老闆' : '店員';
     };
 
     return (
@@ -93,13 +98,13 @@ export default function SelectStorePage() {
                                 選擇要操作的店鋪
                             </h1>
                             <p className="text-slate-600">
-                                您有 {user.stores.length} 個店鋪的操作權限
+                                {isAdmin ? '您具備全域管理權限，可存取系統內所有店鋪' : `您有 ${stores.length} 個店鋪的操作權限`}
                             </p>
                         </div>
 
                         {/* 店鋪網格 */}
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-                            {user.stores.map((store) => (
+                            {stores.map((store: any) => (
                                 <Card
                                     key={store.id}
                                     className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 border-2 border-slate-200 hover:border-[#D4AF37]"

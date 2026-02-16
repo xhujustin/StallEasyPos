@@ -34,11 +34,27 @@
     margin-top: 0.5rem;
 }
 
+.usernameInput {
+    text-align: center;
+    font-size: 1.25rem;
+    line-height: 1.75rem;
+    height: 3.5rem;
+    border-color: rgb(203 213 225);
+    margin-bottom: 1rem;
+    font-weight: 500;
+}
+
+.usernameInput:focus {
+    border-color: #D4AF37;
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(212, 175, 55, 0.1);
+}
+
 .pinInput {
     text-align: center;
     font-size: 1.875rem;
     line-height: 2.25rem;
-    letter-spacing: 1em;
+    letter-spacing: 0.5em;
     height: 4rem;
     font-family: ui-monospace, monospace;
     border-color: rgb(203 213 225);

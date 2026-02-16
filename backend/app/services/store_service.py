@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException
 
 from app.models.store import Store
-from app.models.user import StoreUser, UserRole
+from app.models.user import StoreUser, UserRole, User
 from app.schemas.stores import StoreCreate
 
 class StoreService:
@@ -42,6 +42,24 @@ class StoreService:
     @staticmethod
     async def get_user_stores(db: AsyncSession, user_id: int) -> List[dict]:
         """取得使用者可訪問的所有店鋪(含角色資訊)"""
+        user = await db.get(User, user_id)
+        
+        if user and user.is_admin:
+            # 全域管理員可以看到所有店鋪，角色暫定為 OWNER
+            query = select(Store)
+            result = await db.execute(query)
+            stores_with_roles = []
+            for store in result.scalars().all():
+                stores_with_roles.append({
+                    'id': store.id,
+                    'name': store.name,
+                    'owner_id': store.owner_id,
+                    'user_role': UserRole.OWNER.value, # ADMIN behaves like OWNER
+                    'created_at': store.created_at
+                })
+            return stores_with_roles
+
+        # 一般使用者查詢
         query = (
             select(Store, StoreUser.role)
             .join(StoreUser, Store.id == StoreUser.store_id)
@@ -49,14 +67,13 @@ class StoreService:
         )
         result = await db.execute(query)
         
-        # 組合店鋪資訊和角色
         stores_with_roles = []
         for store, role in result:
             store_dict = {
                 'id': store.id,
                 'name': store.name,
                 'owner_id': store.owner_id,
-                'user_role': role.value,  # 新增角色資訊
+                'user_role': role.value,
                 'created_at': store.created_at
             }
             stores_with_roles.append(store_dict)
@@ -65,7 +82,16 @@ class StoreService:
 
     @staticmethod
     async def get_store_if_authorized(db: AsyncSession, store_id: int, user_id: int) -> Store:
-        """取得特定店鋪 (需驗證權限)"""
+        """取得特定店鋪 (需驗證權限，ADMIN 除外)"""
+        # 1. 檢查是否為全域管理員
+        user = await db.get(User, user_id)
+        if user and user.is_admin:
+            store = await db.get(Store, store_id)
+            if not store:
+                raise HTTPException(status_code=404, detail="Store not found")
+            return store
+
+        # 2. 一般使用者權限檢查
         query = (
             select(Store)
             .join(StoreUser, Store.id == StoreUser.store_id)

@@ -17,7 +17,17 @@ class User(Base):
     id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
     username: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
     hashed_password: Mapped[str] = mapped_column(Text, nullable=False)
+    is_admin: Mapped[bool] = mapped_column(server_default="false", nullable=False)
     
+    # 詳細資訊
+    full_name: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    nickname: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    email: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    phone: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    gender: Mapped[Optional[str]] = mapped_column(Text, nullable=True) # e.g. "male", "female", "other"
+    address: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    birthday: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
