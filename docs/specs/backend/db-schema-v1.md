@@ -16,6 +16,8 @@ CREATE TYPE audit_action AS ENUM (
   'order_created','order_voided','payment_created','payment_confirmed',
   'closing_locked','adjustment_created','invoice_requested','invoice_issued','invoice_failed','invoice_retry'
 );
+CREATE TYPE shift_status AS ENUM ('open', 'closed');
+CREATE TYPE setting_scope AS ENUM ('store', 'device', 'user');
 ```
 
 ## 2. Identity & Tenancy
@@ -128,6 +130,12 @@ CREATE TABLE orders (
   order_no BIGINT NOT NULL,                      -- per store monotonic
   source order_source NOT NULL DEFAULT 'pos',
   status order_status NOT NULL,
+  order_type order_type NOT NULL DEFAULT 'take_out',
+  subtotal NUMERIC(10,2) NOT NULL DEFAULT 0,
+  service_fee NUMERIC(10,2) NOT NULL DEFAULT 0,
+  service_fee_rate NUMERIC(10,2) NOT NULL DEFAULT 0,
+  discount_amount NUMERIC(10,2) NOT NULL DEFAULT 0,
+  discount_note TEXT NULL,
   total_amount NUMERIC(10,2) NOT NULL,
   payment_method payment_method NULL,
   idempotency_key TEXT NOT NULL,                 -- Critical for offline sync
@@ -261,4 +269,21 @@ CREATE TABLE audit_logs (
 );
 CREATE INDEX idx_audit_store_created ON audit_logs(store_id, created_at DESC);
 CREATE INDEX idx_audit_entity ON audit_logs(entity_type, entity_id);
+
+## 5. System Configuration
+
+### System Settings
+```sql
+CREATE TABLE system_settings (
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  scope setting_scope NOT NULL DEFAULT 'store',
+  target_id BIGINT NULL,          -- store_id, user_id depending on scope
+  key TEXT NOT NULL,
+  value JSONB NOT NULL,           -- Structured config (e.g. {tax_rate: 5})
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(scope, target_id, key)
+);
+CREATE INDEX idx_settings_target ON system_settings(scope, target_id);
+```
 ```

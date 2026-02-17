@@ -127,19 +127,31 @@ class OrderService:
             order_items.append(db_item)
 
         # 6. Validate Total
-        # Tolerate small float diff
-        if abs(calculated_total - order_in.total_amount) > 0.05: # Allow 0.05 diff
+        # Tolerate small float diff due to service fee and rounding
+        if abs(calculated_total - order_in.subtotal) > 0.1:
              raise HTTPException(
                 status_code=400, 
-                detail=f"Total amount mismatch. Calculated: {calculated_total}, Received: {order_in.total_amount}"
+                detail=f"Subtotal mismatch. Calculated: {calculated_total}, Received: {order_in.subtotal}"
+            )
+        
+        # 6. Validate Total
+        # expected = subtotal + service_fee - discount
+        expected_total = order_in.subtotal + order_in.service_fee - order_in.discount_amount
+        if abs(expected_total - order_in.total_amount) > 1.0: # Allow rounding tolerance
+             raise HTTPException(
+                status_code=400, 
+                detail=f"Total mismatch. (Subtotal+ServiceFee-Discount): {expected_total}, Received total_amount: {order_in.total_amount}"
             )
 
         # 7. Create Order
         order = Order(
             store_id=store_id,
             order_no=new_order_no,
-            business_date=date.today(), # Keep tracking business date
             idempotency_key=order_in.idempotency_key,
+            subtotal=order_in.subtotal,
+            service_fee=order_in.service_fee,
+            service_fee_rate=order_in.service_fee_rate,
+            order_type=order_in.order_type,
             total_amount=order_in.total_amount,
             status=OrderStatus.PAID if order_in.payment_method else OrderStatus.PENDING_PAYMENT,
             source=order_in.source,
@@ -148,6 +160,8 @@ class OrderService:
             created_by_id=user_id,
             cash_received=order_in.cash_received,
             change_amount=order_in.change_amount,
+            discount_amount=order_in.discount_amount,
+            discount_note=order_in.discount_note,
             shift_id=shift_id
         )
         

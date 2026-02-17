@@ -14,6 +14,11 @@ class OrderSource(str, Enum):
     POS = "pos"
     DELIVERY = "delivery"
 
+class OrderType(str, Enum):
+    DINE_IN = "dine_in"
+    TAKE_OUT = "take_out"
+    DELIVERY = "delivery"
+
 class OrderStatus(str, Enum):
     DRAFT = "draft"
     PENDING_PAYMENT = "pending_payment"
@@ -36,8 +41,12 @@ class Order(Base):
     order_no: Mapped[int] = mapped_column(BigInteger, nullable=False)
     
     source: Mapped[OrderSource] = mapped_column(psql_enum(OrderSource, name="order_source"), nullable=False, server_default="pos")
+    order_type: Mapped[OrderType] = mapped_column(psql_enum(OrderType, name="order_type"), nullable=False, server_default="take_out")
     status: Mapped[OrderStatus] = mapped_column(psql_enum(OrderStatus, name="order_status"), nullable=False)
     
+    service_fee_rate: Mapped[float] = mapped_column(Numeric(5, 2), nullable=False, server_default="0")
+    subtotal: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False, server_default="0")
+    service_fee: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False, server_default="0")
     total_amount: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
     payment_method: Mapped[Optional[PaymentMethod]] = mapped_column(psql_enum(PaymentMethod, name="payment_method"), nullable=True)
     
@@ -52,6 +61,10 @@ class Order(Base):
     created_by_id: Mapped[Optional[int]] = mapped_column(BigInteger, ForeignKey("users.id"), nullable=True)
     cash_received: Mapped[Optional[float]] = mapped_column(Numeric(10, 2), nullable=True)
     change_amount: Mapped[Optional[float]] = mapped_column(Numeric(10, 2), nullable=True)
+    
+    # 新增折扣欄位
+    discount_amount: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False, server_default="0")
+    discount_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)

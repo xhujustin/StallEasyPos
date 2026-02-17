@@ -167,10 +167,13 @@ export default function OrdersPage() {
                     <Table className="m-0 w-full min-w-full border-collapse">
                         <TableHeader className="bg-slate-50 sticky top-0 z-10 border-b border-slate-200 m-0 p-0">
                             <TableRow className="h-10 hover:bg-transparent border-0">
-                                <TableHead className="w-[80px] pl-4 h-10 text-slate-900 font-bold align-middle">單號</TableHead>
-                                <TableHead className="w-[100px] px-2 h-10 text-slate-900 font-bold align-middle">時間</TableHead>
+                                <TableHead className="w-[60px] pl-4 h-10 text-slate-900 font-bold align-middle">單號</TableHead>
+                                <TableHead className="w-[80px] px-2 h-10 text-slate-900 font-bold align-middle">時間</TableHead>
+                                <TableHead className="w-[80px] px-2 h-10 text-slate-900 font-bold align-middle text-center">類型</TableHead>
                                 <TableHead className="px-2 h-10 text-slate-900 font-bold align-middle">支付</TableHead>
-                                <TableHead className="px-2 h-10 text-slate-900 font-bold align-middle">金額</TableHead>
+                                <TableHead className="px-2 h-10 text-slate-900 font-black align-middle">商品小計</TableHead>
+                                <TableHead className="px-2 h-10 text-slate-900 font-black align-middle text-red-600">服務費</TableHead>
+                                <TableHead className="px-2 h-10 text-slate-900 font-bold align-middle">應收</TableHead>
                                 <TableHead className="px-2 h-10 text-slate-900 font-bold align-middle">實收</TableHead>
                                 <TableHead className="px-2 h-10 text-slate-900 font-bold align-middle">狀態</TableHead>
                                 <TableHead className="text-right pr-4 h-10 text-slate-900 font-bold align-middle">操作</TableHead>
@@ -179,7 +182,7 @@ export default function OrdersPage() {
                         <TableBody>
                             {orders.length === 0 && !isLoading ? (
                                 <TableRow>
-                                    <TableCell colSpan={7} className="text-center py-12 text-slate-500">
+                                    <TableCell colSpan={10} className="text-center py-12 text-slate-500">
                                         尚無訂單資料
                                     </TableCell>
                                 </TableRow>
@@ -196,22 +199,41 @@ export default function OrdersPage() {
                                         <TableCell className="font-bold font-mono text-slate-900 text-lg pl-4 py-2">
                                             #{order.order_no}
                                         </TableCell>
-                                        <TableCell className="text-slate-600 font-medium px-2 py-2">
+                                        <TableCell className="text-slate-600 font-medium px-2 py-2 text-xs">
                                             {new Date(order.created_at).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', hour12: false })}
                                         </TableCell>
+                                        <td className="px-2 py-2 text-center">
+                                            <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${order.order_type === 'dine_in' ? 'bg-blue-50 text-blue-600' : 'bg-gray-50 text-gray-500'
+                                                }`}>
+                                                {order.order_type === 'dine_in' ? '內用' : order.order_type === 'take_out' ? '外帶' : '外送'}
+                                            </span>
+                                        </td>
                                         <TableCell className="px-2 py-2">
-                                            <Badge variant="outline" className="font-normal text-slate-600">
+                                            <Badge variant="outline" className="font-normal text-slate-600 text-[10px] px-1 h-5">
                                                 {order.payment_method === 'cash' ? '現金' : order.payment_method || '-'}
                                             </Badge>
                                         </TableCell>
                                         <TableCell className="font-bold text-slate-900 font-mono px-2 py-2">
-                                            ${order.total_amount}
+                                            ${order.subtotal || order.total_amount}
+                                        </TableCell>
+                                        <TableCell className="text-red-400 font-mono text-xs px-2 py-2">
+                                            <div className="flex flex-col">
+                                                <span className={`${order.service_fee ? 'text-red-600 font-bold' : 'text-slate-400 font-bold'}`}>
+                                                    {order.service_fee ? `+$${order.service_fee}` : '$0'}
+                                                </span>
+                                                <span className="text-[10px] opacity-50">
+                                                    ({order.service_fee_rate ? `${order.service_fee_rate}%` : '0%'})
+                                                </span>
+                                            </div>
                                         </TableCell>
                                         <TableCell className="font-bold text-slate-900 font-mono px-2 py-2">
+                                            ${order.total_amount}
+                                        </TableCell>
+                                        <TableCell className="font-bold text-blue-600 font-mono px-2 py-2">
                                             {order.cash_received != null ? `$${order.cash_received}` : '-'}
                                         </TableCell>
                                         <TableCell className="px-2 py-2">
-                                            {getStatusBadge(order.status)}
+                                            {getStatusBadge(order.status as string)}
                                         </TableCell>
                                         <TableCell className="text-right pr-3 py-2">
                                             <div className="flex justify-end gap-2" onClick={e => e.stopPropagation()}>

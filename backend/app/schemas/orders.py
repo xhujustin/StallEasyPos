@@ -1,7 +1,7 @@
 from typing import List, Optional
 from datetime import datetime, date
 from pydantic import BaseModel, ConfigDict
-from app.models.order import OrderStatus, PaymentMethod, OrderSource
+from app.models.order import OrderStatus, PaymentMethod, OrderSource, OrderType
 from app.schemas.users import UserOut
 
 class OrderItemOption(BaseModel):
@@ -22,6 +22,10 @@ class OrderCreate(BaseModel):
     idempotency_key: str
     items: List[OrderItemCreate]
     total_amount: float # Client calculated total, backend should verify or re-calc
+    subtotal: float = 0
+    service_fee: float = 0
+    service_fee_rate: float = 0
+    order_type: OrderType = OrderType.TAKE_OUT
     payment_method: Optional[PaymentMethod] = None
     source: OrderSource = OrderSource.POS
     cash_received: Optional[float] = None
@@ -40,9 +44,12 @@ class OrderItemOut(BaseModel):
 
 class OrderOut(BaseModel):
     id: int
-    store_id: int
     order_no: int
     status: OrderStatus
+    order_type: OrderType
+    subtotal: float
+    service_fee: float
+    service_fee_rate: float
     total_amount: float
     payment_method: Optional[PaymentMethod]
     source: OrderSource
@@ -52,6 +59,8 @@ class OrderOut(BaseModel):
     
     cash_received: Optional[float] = None
     change_amount: Optional[float] = None
+    discount_amount: float = 0
+    discount_note: Optional[str] = None
     
     created_by: Optional[UserOut] = None
     creator_role: Optional[str] = None # Computed

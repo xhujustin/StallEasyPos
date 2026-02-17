@@ -11,6 +11,12 @@ export enum OrderSource {
     DELIVERY = 'delivery'
 }
 
+export enum OrderType {
+    DINE_IN = 'dine_in',
+    TAKE_OUT = 'take_out',
+    DELIVERY = 'delivery'
+}
+
 export interface OrderItemOption {
     attribute_id: number;
     attribute_name: string;
@@ -30,10 +36,16 @@ export interface OrderCreate {
     idempotency_key: string;
     items: OrderItemCreate[];
     total_amount: number;
+    subtotal: number;
+    service_fee: number;
+    service_fee_rate: number;
+    order_type: OrderType;
     payment_method?: PaymentMethod;
     source?: OrderSource;
     cash_received?: number;
     change_amount?: number;
+    discount_amount?: number;
+    discount_note?: string;
 }
 
 export interface OrderFilter {
@@ -69,6 +81,10 @@ export interface Order {
     store_id: number;
     order_no: number;
     status: OrderStatus | string;
+    order_type: OrderType | string;
+    subtotal: number;
+    service_fee: number;
+    service_fee_rate: number;
     total_amount: number;
     payment_method?: PaymentMethod | string;
     source: string;
@@ -81,6 +97,8 @@ export interface Order {
 
     cash_received?: number;
     change_amount?: number;
+    discount_amount: number;
+    discount_note?: string;
     created_by?: {
         id: number;
         username: string;

@@ -21,7 +21,7 @@ export default function POSPage() {
     const router = useRouter();
     const [mounted, setMounted] = useState(false);
     const [showCheckout, setShowCheckout] = useState(false);
-    const { items, addToCart, removeFromCart, updateQuantity, totalAmount } = useCartStore();
+    const { items, addToCart, removeFromCart, updateQuantity, totalAmount, initStore } = useCartStore();
     const [activeCategory, setActiveCategory] = useState('全部');
     const { user, selectedStoreId } = useAuthStore();
 
@@ -59,6 +59,9 @@ export default function POSPage() {
     });
 
     useEffect(() => {
+        if (storeId) {
+            initStore(storeId);
+        }
         setMounted(true);
         // Fetch current shift ID
         const fetchShift = async () => {

@@ -53,18 +53,16 @@ export function OrderDetailModal({ isOpen, order, onClose, onStatusChange }: Ord
                         </div>
                     </div>
                     <div className="flex items-center gap-4">
-                        {/* Order Source in Header */}
-                        <div className="text-sm text-right">
-                            <div className="text-gray-500 text-xs">訂單來源</div>
-                            <div className="font-medium text-gray-800 uppercase">
-                                {order.created_by?.username ? (
-                                    <>
-                                        {order.created_by.username}
-                                        {order.creator_role && <span className="text-xs text-gray-500 ml-1">({order.creator_role})</span>}
-                                    </>
-                                ) : (
-                                    order.source
-                                )}
+                        {/* Order Type & Source in Header */}
+                        <div className="text-sm text-right flex flex-col items-end gap-1">
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${order.order_type === 'dine_in'
+                                ? 'bg-blue-50 text-blue-600 border-blue-200'
+                                : 'bg-gray-100 text-gray-500 border-gray-200'
+                                }`}>
+                                {order.order_type === 'dine_in' ? '內用' : order.order_type === 'take_out' ? '外帶' : '外送'}
+                            </span>
+                            <div className="text-gray-400 text-[10px] uppercase">
+                                {order.created_by?.username || order.source}
                             </div>
                         </div>
                         <button onClick={onClose} className="text-gray-400 hover:text-gray-600 rounded-full p-1 hover:bg-gray-100">
@@ -123,11 +121,27 @@ export function OrderDetailModal({ isOpen, order, onClose, onStatusChange }: Ord
                             </tbody>
                             <tfoot className="bg-gray-50 border-t border-gray-200">
                                 <tr>
-                                    <td colSpan={2} className="px-4 py-3 text-left font-medium text-gray-600 align-middle">
-                                        付款方式: <span className="uppercase font-bold text-gray-800 ml-1">{order.payment_method || '-'}</span>
+                                    <td colSpan={2} className="px-4 py-2 text-left text-xs text-gray-500 align-middle">
+                                        支付方式: <span className="uppercase font-bold text-gray-700 ml-1">{order.payment_method === 'cash' ? '現金' : order.payment_method || '-'}</span>
                                     </td>
-                                    <td className="px-4 py-3 text-right font-bold text-gray-800 align-middle">總計</td>
-                                    <td className="px-4 py-3 text-right font-bold text-blue-600 text-lg align-middle">
+                                    <td className="px-4 py-2 text-right text-sm font-bold text-gray-700 align-middle border-l border-gray-100">商品小計</td>
+                                    <td className="px-4 py-2 text-right font-bold text-gray-900 align-middle">
+                                        {formatCurrency(order.subtotal || order.total_amount)}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td colSpan={2} className="px-4 py-1"></td>
+                                    <td className="px-4 py-1 text-right text-xs font-bold text-slate-500 align-middle border-l border-gray-100">
+                                        服務費 ({order.service_fee_rate || 0}%)
+                                    </td>
+                                    <td className={`px-4 py-1 text-right text-sm font-bold align-middle ${order.service_fee > 0 ? 'text-red-500' : 'text-slate-500'}`}>
+                                        {order.service_fee > 0 ? '+' : ''}{formatCurrency(order.service_fee || 0)}
+                                    </td>
+                                </tr>
+                                <tr className="border-t border-gray-200/50">
+                                    <td colSpan={2}></td>
+                                    <td className="px-4 py-3 text-right font-bold text-gray-800 align-middle border-l border-gray-100">應收金額</td>
+                                    <td className="px-4 py-3 text-right font-black text-blue-600 text-xl align-middle">
                                         {formatCurrency(order.total_amount)}
                                     </td>
                                 </tr>

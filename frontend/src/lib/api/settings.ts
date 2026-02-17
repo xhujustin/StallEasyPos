@@ -42,6 +42,16 @@ export const settingsApi = {
             tax_mode: result.data?.tax_mode || "inclusive", // 預設含稅
             timezone: result.data?.timezone || "Asia/Taipei",
             language: result.data?.language || "zh-TW",
+            receipt_width: result.data?.receipt_width || "80mm",
+            // 財務經營參數
+            monthly_fixed_costs: result.data?.monthly_fixed_costs || [],
+            rounding_rule: result.data?.rounding_rule || "round",
+            default_service_fee_rate: result.data?.default_service_fee_rate || 0,
+            // POS 營運自動化
+            auto_print_after_checkout: result.data?.auto_print_after_checkout ?? false,
+            default_order_type: result.data?.default_order_type || "take_out",
+            enabled_payment_methods: result.data?.enabled_payment_methods || ["cash"],
+            discount_presets: result.data?.discount_presets || [],
         };
     },
 

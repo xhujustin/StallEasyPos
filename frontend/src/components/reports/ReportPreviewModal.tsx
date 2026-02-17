@@ -39,7 +39,42 @@ const AccountantReportContent = ({ shifts, dateRange }: ReportContentProps) => {
     const maxSales = Math.max(...shifts.map(s => s.total_sales || 0), 1);
 
     return (
-        <div className="p-8 print:p-0 font-serif text-black" id="report-content-accountant">
+        <div className="p-8 print:p-0 font-serif text-black max-w-[210mm] mx-auto print-a4-fixed" id="report-content-accountant">
+            <style dangerouslySetInnerHTML={{
+                __html: `
+                @media print {
+                    @page {
+                        size: A4 portrait;
+                        margin: 10mm;
+                    }
+                    body {
+                        -webkit-print-color-adjust: exact;
+                        width: 210mm !important;
+                    }
+                    #report-content-accountant {
+                        width: 190mm !important; /* 210mm - 2*10mm margins */
+                        margin: 0 auto !important;
+                        transform: scale(0.95);
+                        transform-origin: top center;
+                    }
+                    .report-section, tr, .grid, .flex {
+                        page-break-inside: avoid;
+                        break-inside: avoid;
+                    }
+                    #report-content-accountant {
+                        width: 180mm !important;
+                        max-width: 180mm !important;
+                        padding: 0 !important;
+                        margin: 0 auto !important;
+                        transform: scale(0.98);
+                        transform-origin: top center;
+                    }
+                    table {
+                        width: 100% !important;
+                        table-layout: fixed;
+                    }
+                }
+            `}} />
             {/* Header */}
             <div className="text-center mb-6 border-b-4 border-double border-gray-800 pb-4">
                 <h2 className="text-3xl font-bold text-gray-900 tracking-wide uppercase">營業損益結算表</h2>
@@ -51,24 +86,24 @@ const AccountantReportContent = ({ shifts, dateRange }: ReportContentProps) => {
             </div>
 
             {/* Summary */}
-            <div className="grid grid-cols-4 gap-4 mb-6 border-b border-gray-300 pb-6">
-                <div className="p-3 border border-gray-300">
-                    <span className="text-[10px] uppercase font-bold text-gray-500 block">總銷售額 (Revenue)</span>
-                    <span className="text-xl font-bold font-mono">${totalSales.toLocaleString()}</span>
+            <div className="flex flex-nowrap gap-2 mb-6 border-b border-gray-300 pb-6 overflow-hidden">
+                <div className="flex-1 p-2 border border-gray-300 min-w-0">
+                    <span className="text-[9px] uppercase font-bold text-gray-500 block truncate">總銷售額 (Revenue)</span>
+                    <span className="text-lg font-bold font-mono block truncate">${totalSales.toLocaleString()}</span>
                 </div>
-                <div className="p-3 border border-gray-300">
-                    <span className="text-[10px] uppercase font-bold text-gray-500 block">總淨利 (Net Profit)</span>
-                    <span className={cn("text-xl font-bold font-mono", totalNetProfit >= 0 ? "text-black" : "text-red-700")}>
+                <div className="flex-1 p-2 border border-gray-300 min-w-0">
+                    <span className="text-[9px] uppercase font-bold text-gray-500 block truncate">總淨利 (Net Profit)</span>
+                    <span className={cn("text-lg font-bold font-mono block truncate", totalNetProfit >= 0 ? "text-black" : "text-red-700")}>
                         ${totalNetProfit.toLocaleString()}
                     </span>
                 </div>
-                <div className="p-3 border border-gray-300">
-                    <span className="text-[10px] uppercase font-bold text-gray-500 block">總單量 (Orders)</span>
-                    <span className="text-xl font-bold font-mono">{totalOrderCount.toLocaleString()}</span>
+                <div className="flex-1 p-2 border border-gray-300 min-w-0">
+                    <span className="text-[9px] uppercase font-bold text-gray-500 block truncate">總單量 (Orders)</span>
+                    <span className="text-lg font-bold font-mono block truncate">{totalOrderCount.toLocaleString()}</span>
                 </div>
-                <div className="p-3 border border-gray-300">
-                    <span className="text-[10px] uppercase font-bold text-gray-500 block">客單價 (AOV)</span>
-                    <span className="text-xl font-bold font-mono">
+                <div className="flex-1 p-2 border border-gray-300 min-w-0">
+                    <span className="text-[9px] uppercase font-bold text-gray-500 block truncate">客單價 (AOV)</span>
+                    <span className="text-lg font-bold font-mono block truncate">
                         ${totalOrderCount > 0 ? Math.round(totalSales / totalOrderCount).toLocaleString() : 0}
                     </span>
                 </div>
@@ -104,11 +139,11 @@ const AccountantReportContent = ({ shifts, dateRange }: ReportContentProps) => {
                         <th className="py-1 text-left whitespace-nowrap">班次</th>
                         <th className="py-1 text-left whitespace-nowrap">開啟 / 結單人員</th>
                         <th className="py-1 text-right whitespace-nowrap">單量</th>
-                        <th className="py-1 text-right whitespace-nowrap">營收</th>
-                        <th className="py-1 text-right whitespace-nowrap">淨利</th>
-                        <th className="py-1 text-right whitespace-nowrap">期初現金</th>
-                        <th className="py-1 text-right whitespace-nowrap">期末實收</th>
-                        <th className="py-1 text-right whitespace-nowrap">現金差異</th>
+                        <th className="py-1 text-right whitespace-nowrap w-[12%]">營收</th>
+                        <th className="py-1 text-right whitespace-nowrap w-[12%]">淨利</th>
+                        <th className="py-1 text-right whitespace-nowrap w-[12%]">期初</th>
+                        <th className="py-1 text-right whitespace-nowrap w-[12%]">實收</th>
+                        <th className="py-1 text-right whitespace-nowrap w-[10%]">差異</th>
                     </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">

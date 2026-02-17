@@ -239,23 +239,48 @@ const AccountantReportContent = ({
                         display: none !important;
                     }
 
-                    /* Ensure print content is visible */
+                    /* Ensure print content is visible and takes full width */
                     .print-content {
                         display: block !important;
-                        position: relative !important;
                         width: 100% !important;
                         margin: 0 !important;
                         padding: 0 !important;
                         visibility: visible !important;
-                        background: white !important;
+                        background: transparent !important; /* 重要：改為透明，防止底色被遮擋 */
                     }
 
                     html, body {
+                        width: 210mm !important;
                         height: auto !important;
                         overflow: visible !important;
-                        width: 100% !important;
                         margin: 0 !important;
                         padding: 0 !important;
+                        background: white !important;
+                    }
+
+                    .a4-preview {
+                        width: 210mm !important; /* 強制寬度回歸 210mm */
+                        max-width: 210mm !important;
+                        padding: 10mm !important; /* 改為內容 padding 而非外部 margin */
+                        box-sizing: border-box !important;
+                        box-shadow: none !important;
+                        margin: 0 !important;
+                        transform: none !important; /* 移除 scale，改用精確寬度 */
+                        background: transparent !important;
+                    }
+
+                    .report-section {
+                        page-break-inside: avoid;
+                        break-inside: avoid;
+                        margin-bottom: 2rem !important;
+                        width: 100% !important;
+                    }
+
+                    /* Avoid grid issues in some print engines */
+                    .flex-row {
+                        display: flex !important;
+                        flex-direction: row !important;
+                        width: 100% !important;
                     }
                 }
                 
@@ -321,9 +346,9 @@ const AccountantReportContent = ({
                     </div>
                 </div>
 
-                <div className="grid grid-cols-12 gap-8">
+                <div className="flex flex-row gap-8">
                     {/* Left Column: Key Stats */}
-                    <div className="col-span-12 lg:col-span-4 space-y-8">
+                    <div className="w-[35%] space-y-8">
                         {/* Revenue Summary (Section 2) */}
                         <div className="report-section">
                             <SectionTitle title="營收總覽" subtitle="Revenue Summary" />
@@ -367,7 +392,7 @@ const AccountantReportContent = ({
                     </div>
 
                     {/* Right Column: Detailed Breakdown */}
-                    <div className="col-span-12 lg:col-span-8 space-y-8">
+                    <div className="w-[65%] space-y-8">
                         {/* Sales Breakdown (Section 3) */}
                         <div className="report-section">
                             <SectionTitle title="商品分類占比" subtitle="Sales Structure by Category" />

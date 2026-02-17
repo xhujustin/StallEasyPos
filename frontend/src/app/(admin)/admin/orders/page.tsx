@@ -160,10 +160,13 @@ export default function OrderListPage() {
                     <table className="w-full text-left">
                         <thead>
                             <tr className="bg-gray-50 border-b border-gray-200 text-gray-500 text-xs uppercase tracking-wider">
-                                <th className="px-6 py-3 font-semibold">訂單編號</th>
-                                <th className="px-6 py-3 font-semibold">日期時間</th>
-                                <th className="px-6 py-3 font-semibold">總金額</th>
-                                <th className="px-6 py-3 font-semibold">付款方式</th>
+                                <th className="px-6 py-3 font-semibold">單號</th>
+                                <th className="px-6 py-3 font-semibold">時間</th>
+                                <th className="px-6 py-3 font-semibold text-center">類型</th>
+                                <th className="px-6 py-3 font-bold text-gray-900">商品小計</th>
+                                <th className="px-6 py-3 font-bold text-gray-900">服務費 (%)</th>
+                                <th className="px-6 py-3 font-bold text-gray-900">服務費 ($)</th>
+                                <th className="px-6 py-3 font-semibold">應收</th>
                                 <th className="px-6 py-3 font-semibold">狀態</th>
                                 <th className="px-6 py-3 font-semibold text-right">操作</th>
                             </tr>
@@ -171,13 +174,13 @@ export default function OrderListPage() {
                         <tbody className="divide-y divide-gray-100">
                             {isLoading ? (
                                 <tr>
-                                    <td colSpan={6} className="px-6 py-12 text-center text-gray-500">
+                                    <td colSpan={9} className="px-6 py-12 text-center text-gray-500">
                                         載入中...
                                     </td>
                                 </tr>
                             ) : orders.length === 0 ? (
                                 <tr>
-                                    <td colSpan={6} className="px-6 py-12 text-center text-gray-500">
+                                    <td colSpan={9} className="px-6 py-12 text-center text-gray-500">
                                         尚無訂單資料
                                     </td>
                                 </tr>
@@ -187,18 +190,30 @@ export default function OrderListPage() {
                                         <td className="px-6 py-4 font-medium text-gray-900">
                                             #{order.order_no}
                                         </td>
-                                        <td className="px-6 py-4 text-sm text-gray-500">
-                                            {new Date(order.created_at).toLocaleString('zh-TW')}
+                                        <td className="px-6 py-4 text-xs text-gray-500">
+                                            {new Date(order.created_at).toLocaleString('zh-TW', { hour: '2-digit', minute: '2-digit', hour12: false })}
                                         </td>
-                                        <td className="px-6 py-4 font-medium text-gray-900">
+                                        <td className="px-6 py-4 text-center">
+                                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${order.order_type === 'dine_in' ? 'bg-blue-50 text-blue-600 border border-blue-100' : 'bg-gray-50 text-gray-500 border border-gray-100'
+                                                }`}>
+                                                {order.order_type === 'dine_in' ? '內用' : order.order_type === 'take_out' ? '外帶' : '外送'}
+                                            </span>
+                                        </td>
+                                        <td className="px-6 py-4 text-sm text-gray-900 font-bold">
+                                            ${order.subtotal || order.total_amount}
+                                        </td>
+                                        <td className="px-6 py-4 text-sm text-gray-500 font-bold">
+                                            {order.service_fee_rate ? `${order.service_fee_rate}%` : '0%'}
+                                        </td>
+                                        <td className={`px-6 py-4 text-sm font-mono font-bold ${order.service_fee ? 'text-red-500' : 'text-gray-400'}`}>
+                                            {order.service_fee ? `+$${order.service_fee}` : '$0'}
+                                        </td>
+                                        <td className="px-6 py-4 font-bold text-gray-900">
                                             ${order.total_amount}
                                         </td>
-                                        <td className="px-6 py-4 text-sm text-gray-500 uppercase">
-                                            {order.payment_method || '-'}
-                                        </td>
                                         <td className="px-6 py-4">
-                                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(order.status)}`}>
-                                                {getStatusLabel(order.status)}
+                                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(order.status as string)}`}>
+                                                {getStatusLabel(order.status as string)}
                                             </span>
                                         </td>
                                         <td className="px-6 py-4 text-right">

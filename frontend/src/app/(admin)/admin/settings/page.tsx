@@ -19,7 +19,16 @@ import {
     EyeOff,
     ChevronDown,
     ChevronUp,
-    RefreshCcw
+    RefreshCcw,
+    Coins,
+    Calculator,
+    ShoppingCart,
+    Printer,
+    Plus,
+    Trash2,
+    CreditCard,
+    Wallet,
+    Tags,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -56,6 +65,17 @@ export default function AdminSettingsPage() {
         tax_mode: 'inclusive',
         timezone: 'Asia/Taipei',
         language: 'zh-TW',
+        receipt_width: '80mm',
+        // 財務經營參數
+        monthly_fixed_costs: [] as { id: string, name: string, amount: number }[],
+        rounding_rule: 'round',
+        default_service_fee_rate: 0,
+        // POS 營運自動化
+        auto_print_after_checkout: false,
+        default_order_type: 'take_out',
+        // 營運進階設定
+        enabled_payment_methods: ['cash'] as string[],
+        discount_presets: [] as { id: string, name: string, type: 'percent' | 'fixed', value: number }[],
     });
 
     // 個人資料狀態
@@ -98,7 +118,17 @@ export default function AdminSettingsPage() {
                 settingsApi.getStoreProfile(selectedStoreId),
                 userApi.me()
             ]);
-            setSettings(settingsData);
+            setSettings({
+                ...settingsData,
+                receipt_width: settingsData.receipt_width || '80mm',
+                monthly_fixed_costs: settingsData.monthly_fixed_costs || [],
+                rounding_rule: settingsData.rounding_rule || 'round',
+                default_service_fee_rate: settingsData.default_service_fee_rate || 0,
+                auto_print_after_checkout: settingsData.auto_print_after_checkout ?? false,
+                default_order_type: settingsData.default_order_type || 'take_out',
+                enabled_payment_methods: settingsData.enabled_payment_methods || ['cash'],
+                discount_presets: settingsData.discount_presets || [],
+            });
             if (userData.data) {
                 setProfile({
                     username: userData.data.username || '',
@@ -163,6 +193,77 @@ export default function AdminSettingsPage() {
 
         syncProfile();
     }, [debouncedProfile]);
+
+    const handleAddFixedCost = () => {
+        const newItem = {
+            id: Math.random().toString(36).substr(2, 9),
+            name: '',
+            amount: 0
+        };
+        setSettings({
+            ...settings,
+            monthly_fixed_costs: [...settings.monthly_fixed_costs, newItem]
+        });
+    };
+
+    const handleRemoveFixedCost = (id: string) => {
+        setSettings({
+            ...settings,
+            monthly_fixed_costs: settings.monthly_fixed_costs.filter(item => item.id !== id)
+        });
+    };
+
+    const handleUpdateFixedCost = (id: string, field: 'name' | 'amount', value: string | number) => {
+        setSettings({
+            ...settings,
+            monthly_fixed_costs: settings.monthly_fixed_costs.map(item =>
+                item.id === id ? { ...item, [field]: value } : item
+            )
+        });
+    };
+
+    // 支付管道管理邏輯
+    const togglePaymentMethod = (method: string) => {
+        const current = settings.enabled_payment_methods;
+        const next = current.includes(method)
+            ? current.filter(m => m !== method)
+            : [...current, method];
+
+        // 確保至少有一個支付方式 (通常是現金)
+        if (next.length === 0) return;
+
+        setSettings({ ...settings, enabled_payment_methods: next });
+    };
+
+    // 折扣範本邏輯
+    const handleAddDiscount = () => {
+        const newItem = {
+            id: Math.random().toString(36).substr(2, 9),
+            name: '',
+            type: 'percent' as const,
+            value: 0
+        };
+        setSettings({
+            ...settings,
+            discount_presets: [...settings.discount_presets, newItem]
+        });
+    };
+
+    const handleRemoveDiscount = (id: string) => {
+        setSettings({
+            ...settings,
+            discount_presets: settings.discount_presets.filter(item => item.id !== id)
+        });
+    };
+
+    const handleUpdateDiscount = (id: string, field: string, value: any) => {
+        setSettings({
+            ...settings,
+            discount_presets: settings.discount_presets.map(item =>
+                item.id === id ? { ...item, [field]: value } : item
+            )
+        });
+    };
 
     const [showSyncedStatus, setShowSyncedStatus] = useState(false);
 
@@ -324,7 +425,7 @@ export default function AdminSettingsPage() {
                         <div className="p-6 space-y-6">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div className="space-y-1.5">
-                                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">店鋪代表帳號</label>
+                                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">店鋪帳號</label>
                                     <Input
                                         value={settings.store_account}
                                         onChange={(e) => setSettings({ ...settings, store_account: e.target.value })}
@@ -359,6 +460,20 @@ export default function AdminSettingsPage() {
                                         className="h-12 bg-gray-50 border-gray-200 focus:border-[#D4AF37] font-mono"
                                     />
                                 </div>
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">收據列印寬度</label>
+                                    <div className="relative">
+                                        <select
+                                            value={settings.receipt_width}
+                                            onChange={(e) => setSettings({ ...settings, receipt_width: e.target.value })}
+                                            className="w-full h-12 px-4 bg-gray-50 border border-gray-200 rounded-xl focus:border-[#D4AF37] focus:ring-4 focus:ring-[#D4AF37]/5 outline-none transition-all text-sm font-bold appearance-none"
+                                        >
+                                            <option value="80mm">80mm (標準收據)</option>
+                                            <option value="57mm">57mm (發票/窄單)</option>
+                                        </select>
+                                        <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={16} />
+                                    </div>
+                                </div>
                             </div>
 
                             <div className="space-y-1.5">
@@ -369,6 +484,61 @@ export default function AdminSettingsPage() {
                                     onChange={(e) => setSettings({ ...settings, receipt_footer: e.target.value })}
                                     className="w-full rounded-xl bg-gray-50 border border-gray-200 p-4 text-sm focus:outline-none focus:border-[#D4AF37] focus:ring-4 focus:ring-[#D4AF37]/5 transition-all outline-none"
                                 />
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* POS Automation Card */}
+                    <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden mt-6">
+                        <div className="px-6 py-4 bg-gray-50/80 border-b border-gray-100 flex items-center gap-3">
+                            <ShoppingCart size={18} className="text-[#D4AF37]" />
+                            <h3 className="font-black text-gray-800 tracking-tight">POS 營運自動化</h3>
+                        </div>
+                        <div className="p-6 space-y-6">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">預設訂單類型</label>
+                                    <div className="relative">
+                                        <select
+                                            value={settings.default_order_type}
+                                            onChange={(e) => setSettings({ ...settings, default_order_type: e.target.value })}
+                                            className="w-full h-12 px-4 bg-gray-50 border border-gray-200 rounded-xl focus:border-[#D4AF37] focus:ring-4 focus:ring-[#D4AF37]/5 outline-none transition-all text-sm font-bold appearance-none"
+                                        >
+                                            <option value="take_out">外帶 (Take Out)</option>
+                                            <option value="dine_in">內用 (Dine In)</option>
+                                            <option value="delivery">外送 (Delivery)</option>
+                                        </select>
+                                        <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={16} />
+                                    </div>
+                                </div>
+                                <div className="flex flex-col justify-center">
+                                    <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-100">
+                                        <div className="flex items-center gap-3">
+                                            <div className={cn(
+                                                "w-8 h-8 rounded-lg flex items-center justify-center transition-colors",
+                                                settings.auto_print_after_checkout ? "bg-green-100 text-green-600" : "bg-gray-200 text-gray-400"
+                                            )}>
+                                                <Printer size={18} />
+                                            </div>
+                                            <div className="flex flex-col">
+                                                <span className="text-xs font-black text-gray-700">結帳後自動列印</span>
+                                                <span className="text-[10px] text-gray-400">完成付款後立即觸發出單</span>
+                                            </div>
+                                        </div>
+                                        <button
+                                            onClick={() => setSettings({ ...settings, auto_print_after_checkout: !settings.auto_print_after_checkout })}
+                                            className={cn(
+                                                "w-12 h-6 rounded-full transition-all duration-300 relative",
+                                                settings.auto_print_after_checkout ? "bg-green-500" : "bg-gray-300"
+                                            )}
+                                        >
+                                            <div className={cn(
+                                                "absolute top-1 w-4 h-4 bg-white rounded-full transition-all duration-300",
+                                                settings.auto_print_after_checkout ? "left-7" : "left-1"
+                                            )} />
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -456,6 +626,224 @@ export default function AdminSettingsPage() {
                                     <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={16} />
                                 </div>
                             </div>
+                        </div>
+                    </div>
+
+                    {/* Finance Card */}
+                    <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden mt-6">
+                        <div className="px-6 py-4 bg-gray-50/80 border-b border-gray-100 flex items-center gap-3">
+                            <Coins size={18} className="text-[#D4AF37]" />
+                            <h3 className="font-black text-gray-800 tracking-tight">財務經營設定</h3>
+                        </div>
+                        <div className="p-6 space-y-5">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">進位規則</label>
+                                    <div className="relative">
+                                        <select
+                                            value={settings.rounding_rule}
+                                            onChange={(e) => setSettings({ ...settings, rounding_rule: e.target.value })}
+                                            className="w-full h-12 px-4 bg-gray-50 border border-gray-200 rounded-xl focus:border-[#D4AF37] focus:ring-4 focus:ring-[#D4AF37]/5 outline-none transition-all text-sm font-bold appearance-none"
+                                        >
+                                            <option value="floor">無條件捨去 (捨去小數)</option>
+                                            <option value="round">四捨五入 (小數五入)</option>
+                                            <option value="ceil">無條件進位 (有小數即進位)</option>
+                                        </select>
+                                        <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={16} />
+                                    </div>
+                                </div>
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">預設服務費 (%)</label>
+                                    <Input
+                                        type="number"
+                                        value={isNaN(settings.default_service_fee_rate) ? '' : settings.default_service_fee_rate}
+                                        onChange={(e) => {
+                                            const val = e.target.value === '' ? 0 : parseFloat(e.target.value);
+                                            setSettings({ ...settings, default_service_fee_rate: val });
+                                        }}
+                                        className="h-12 bg-gray-50 border-gray-200 focus:border-[#D4AF37] font-bold"
+                                    />
+                                </div>
+                            </div>
+
+                            <hr className="border-gray-100" />
+
+                            <div className="space-y-4">
+                                <div className="flex items-center justify-between">
+                                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
+                                        每月固定成本營運項目 (OpEx)
+                                    </label>
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={handleAddFixedCost}
+                                        className="h-7 px-2 rounded-lg text-[10px] font-black border-dashed border-2 hover:border-[#D4AF37] hover:text-[#D4AF37] hover:bg-white flex items-center gap-1"
+                                    >
+                                        <Plus size={12} /> 新增項目
+                                    </Button>
+                                </div>
+
+                                {settings.monthly_fixed_costs.length === 0 ? (
+                                    <div className="text-center py-6 bg-gray-50/50 rounded-2xl border border-dashed border-gray-200">
+                                        <Calculator className="mx-auto text-gray-300 mb-2" size={24} />
+                                        <p className="text-[10px] text-gray-400 font-medium italic">尚未設定固定成本項目</p>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                                        {settings.monthly_fixed_costs.map((item) => (
+                                            <div key={item.id} className="flex items-center gap-3 animate-in fade-in slide-in-from-right-2 duration-300">
+                                                <Input
+                                                    placeholder="項目名稱 (如:房租)"
+                                                    value={item.name}
+                                                    onChange={(e) => handleUpdateFixedCost(item.id, 'name', e.target.value)}
+                                                    className="h-11 flex-[2] bg-gray-50/50 border-gray-200 focus:border-[#D4AF37] text-xs font-bold"
+                                                />
+                                                <div className="relative flex-1">
+                                                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs">$</span>
+                                                    <Input
+                                                        type="number"
+                                                        placeholder="金額"
+                                                        value={item.amount || ''}
+                                                        onChange={(e) => handleUpdateFixedCost(item.id, 'amount', parseFloat(e.target.value) || 0)}
+                                                        className="h-11 pl-6 bg-gray-50/50 border-gray-200 focus:border-[#D4AF37] text-xs font-mono font-bold"
+                                                    />
+                                                </div>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    onClick={() => handleRemoveFixedCost(item.id)}
+                                                    className="h-11 w-11 rounded-xl text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors"
+                                                >
+                                                    <Trash2 size={16} />
+                                                </Button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                                <p className="text-[10px] text-gray-400 font-medium italic leading-relaxed">
+                                    ※ 這些成本將用於報表頁面計算「預估淨利」，不會影響實際結帳總額。
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Payment Management Card */}
+                    <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden mt-6">
+                        <div className="px-6 py-4 bg-gray-50/80 border-b border-gray-100 flex items-center gap-3">
+                            <CreditCard size={18} className="text-[#D4AF37]" />
+                            <h3 className="font-black text-gray-800 tracking-tight">支付管道管理</h3>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            <p className="text-[11px] text-gray-400 font-medium mb-4">設定 POS 結帳畫面顯示的支付按鈕</p>
+
+                            <div className="grid grid-cols-1 gap-3">
+                                {[
+                                    { id: 'cash', name: '現金結帳', icon: <Coins size={16} /> },
+                                    { id: 'linepay', name: 'Line Pay', icon: <Wallet size={16} /> },
+                                    { id: 'platform_collect', name: '平台代收 (外送平台)', icon: <ShoppingCart size={16} /> }
+                                ].map((method) => (
+                                    <div
+                                        key={method.id}
+                                        className={cn(
+                                            "flex items-center justify-between p-4 rounded-xl border transition-all cursor-pointer",
+                                            settings.enabled_payment_methods.includes(method.id)
+                                                ? "bg-blue-50/50 border-blue-100"
+                                                : "bg-white border-gray-100 opacity-60 grayscale hover:grayscale-0 hover:opacity-100"
+                                        )}
+                                        onClick={() => togglePaymentMethod(method.id)}
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <div className={cn(
+                                                "w-8 h-8 rounded-lg flex items-center justify-center",
+                                                settings.enabled_payment_methods.includes(method.id) ? "bg-blue-100 text-blue-600" : "bg-gray-100 text-gray-400"
+                                            )}>
+                                                {method.icon}
+                                            </div>
+                                            <span className="text-sm font-bold text-gray-700">{method.name}</span>
+                                        </div>
+                                        <div className={cn(
+                                            "w-10 h-5 rounded-full relative transition-colors",
+                                            settings.enabled_payment_methods.includes(method.id) ? "bg-blue-500" : "bg-gray-200"
+                                        )}>
+                                            <div className={cn(
+                                                "absolute top-1 w-3 h-3 bg-white rounded-full transition-all",
+                                                settings.enabled_payment_methods.includes(method.id) ? "left-6" : "left-1"
+                                            )} />
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Discount Presets Card */}
+                    <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden mt-6">
+                        <div className="px-6 py-4 bg-gray-50/80 border-b border-gray-100 flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <Tags size={18} className="text-[#D4AF37]" />
+                                <h3 className="font-black text-gray-800 tracking-tight">優惠折扣範本</h3>
+                            </div>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={handleAddDiscount}
+                                className="h-7 px-2 rounded-lg text-[10px] font-black border-dashed border-2 hover:border-[#D4AF37] hover:text-[#D4AF37] hover:bg-white flex items-center gap-1"
+                            >
+                                <Plus size={12} /> 新增折扣
+                            </Button>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            {settings.discount_presets.length === 0 ? (
+                                <div className="text-center py-8 bg-gray-50/50 rounded-2xl border border-dashed border-gray-200">
+                                    <Tags className="mx-auto text-gray-300 mb-2" size={24} />
+                                    <p className="text-[10px] text-gray-400 font-medium italic">尚未設定折扣預設項目</p>
+                                </div>
+                            ) : (
+                                <div className="space-y-3">
+                                    {settings.discount_presets.map((discount) => (
+                                        <div key={discount.id} className="p-4 bg-slate-50/50 rounded-2xl border border-slate-100 flex flex-col gap-3">
+                                            <div className="flex items-center justify-between gap-3">
+                                                <Input
+                                                    placeholder="折扣名稱 (如: 員工餐)"
+                                                    value={discount.name}
+                                                    onChange={(e) => handleUpdateDiscount(discount.id, 'name', e.target.value)}
+                                                    className="h-9 bg-white border-gray-200 focus:border-[#D4AF37] text-xs font-bold"
+                                                />
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    onClick={() => handleRemoveDiscount(discount.id)}
+                                                    className="h-9 w-9 text-gray-300 hover:text-red-500 hover:bg-red-50"
+                                                >
+                                                    <Trash2 size={14} />
+                                                </Button>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <select
+                                                    value={discount.type}
+                                                    onChange={(e) => handleUpdateDiscount(discount.id, 'type', e.target.value)}
+                                                    className="h-9 px-3 bg-white border border-gray-200 rounded-lg text-xs font-bold outline-none focus:border-[#D4AF37]"
+                                                >
+                                                    <option value="percent">百分比 (%)</option>
+                                                    <option value="fixed">固定金額 ($)</option>
+                                                </select>
+                                                <div className="relative flex-1">
+                                                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-[10px] font-bold">數值</span>
+                                                    <Input
+                                                        type="number"
+                                                        value={discount.value || ''}
+                                                        onChange={(e) => handleUpdateDiscount(discount.id, 'value', parseFloat(e.target.value) || 0)}
+                                                        className="h-9 pl-10 bg-white border-gray-200 focus:border-[#D4AF37] text-xs font-mono font-bold"
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                            <p className="text-[10px] text-gray-400 font-medium italic leading-relaxed">
+                                ※ 折扣範本將顯示在 POS 結帳畫面中，方便快速套用常用優惠。
+                            </p>
                         </div>
                     </div>
                 </div>

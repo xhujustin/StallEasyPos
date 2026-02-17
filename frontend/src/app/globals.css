@@ -127,27 +127,56 @@
 @media print {
   @page {
     margin: 0;
-    size: auto;
+    size: A4 portrait;
   }
 
   body {
-    background: white;
+    background: white !important;
+    -webkit-print-color-adjust: exact;
+    margin: 0 !important;
+    padding: 0 !important;
   }
 
-  /* Hide everything by default (except the portal container) */
-  body>*:not(.print-only-container) {
+  /* Reset all layout containers to be completely invisible/transparent in print */
+  html,
+  body,
+  #root,
+  [class*="container"],
+  [class*="mainContent"],
+  main {
+    height: auto !important;
+    overflow: visible !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    background: transparent !important;
+  }
+
+  /* Hide UI elements */
+  .no-print,
+  nav,
+  aside,
+  header:not(.print-header),
+  button {
     display: none !important;
   }
 
-  /* Show only the print container */
+  /* Maintain portal print support */
   .print-only-container {
     display: block !important;
     position: absolute;
     left: 0;
     top: 0;
-    width: 100%;
-    margin: 0;
-    padding: 0;
+    width: var(--receipt-width, 80mm);
+  }
+
+  /* Force A4 for specific reports */
+  .print-a4-fixed {
+    width: 210mm !important;
+    max-width: 210mm !important;
+    margin: 0 auto !important;
+    transform: scale(0.95);
+    transform-origin: top center;
   }
 }
 

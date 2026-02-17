@@ -24,9 +24,9 @@ class AuthService:
         回傳: (User, auth_mode) -> auth_mode 可為 'STAFF' 或 'ADMIN'
         """
         from app.models.store import Store
-        from app.models.user import StoreUser
+        from app.models.user import StoreUser, UserRole
         
-        # --- 軌道 1: 店鋪帳號分流 ---
+        # --- 軌道 1: 店鋪帳號分流 (POS 快速登入模式) ---
         store_result = await db.execute(select(Store).where(Store.store_account == username))
         store = store_result.scalars().first()
         
@@ -41,36 +41,34 @@ class AuthService:
                 ))
             )
             verify_result = await db.execute(verify_query)
-            from app.models.user import UserRole
+            
             for staff_user, sa in verify_result.all():
                 if security.verify_password(pin, sa.pin_hash):
-                    # 判斷登入權限模式：如果是管理員或是該店鋪 Owner 則為 ADMIN
+                    # 權限識別：系統管理員或是該店鋪 Owner 則為 ADMIN
                     mode = "ADMIN" if (staff_user.is_admin or sa.role == UserRole.OWNER) else "STAFF"
                     return staff_user, mode
             
-            # [硬性阻斷] 既然已經確定輸入的是「店鋪代表帳號」，
-            # 驗證邏輯就必須鎖定在此店鋪範圍。
-            # 如果 PIN 碼都對不上，必須直接回傳 None 並報錯。
-            # 絕對禁止跳出此區塊進入下方的個人密碼驗證軌道。
-            return None, "STAFF"
+            # [硬性阻斷] 既然已經確定輸入的是「店鋪代表帳號」，驗證邏輯即鎖定在該店鋪範圍。
+            # 如果 PIN 碼對不上，直接回傳 None，絕對禁止進入下方的個人密碼驗證軌道。
+            return None, "NONE"
             
-        # --- 軌道 2: 個人帳號分流 (管理後台登入模式) ---
+        # --- 軌道 2: 個人帳號分流 (管理後台/超級管理員登入模式) ---
         result = await db.execute(select(User).where(User.username == username))
         target_user = result.scalars().first()
         
         if target_user:
-            # 方案 A: 驗證該使用者在本系統中登記的任何個人 PIN (優先權高)
+            # 方案 A: 驗證使用者本人的「管理密碼」 (Fallback / 管理員進入後台使用)
+            if target_user.hashed_password and security.verify_password(pin, target_user.hashed_password):
+                return target_user, "ADMIN"
+                
+            # 方案 B: 驗證該使用者在任一店鋪登記的 PIN 碼 (相容舊版)
             assoc_result = await db.execute(select(StoreUser).where(StoreUser.user_id == target_user.id))
             store_users = assoc_result.scalars().all()
             
             for su in store_users:
                 if su.pin_hash and security.verify_password(pin, su.pin_hash):
                     return target_user, "ADMIN"
-            
-            # 方案 B: 驗證使用者本人的「管理密碼」 (Fallback / 管理員進入後台使用)
-            if target_user.hashed_password and security.verify_password(pin, target_user.hashed_password):
-                return target_user, "ADMIN"
-                
+                    
         return None, "NONE"
 
     @staticmethod

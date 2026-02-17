@@ -22,6 +22,8 @@ export interface CartItem {
 
 interface CartState {
     items: CartItem[];
+    storeId: number | null;
+    initStore: (storeId: number) => void;
     // addToCart now accepts more details
     addToCart: (product: { id: number; name: string; price: number; image_url?: string }, quantity?: number, options?: CartItemOption[], note?: string) => void;
     removeFromCart: (cartItemId: string) => void;
@@ -34,6 +36,16 @@ export const useCartStore = create<CartState>()(
     persist(
         (set, get) => ({
             items: [],
+            storeId: null,
+            initStore: (storeId) => {
+                const currentStoreId = get().storeId;
+                if (currentStoreId !== null && currentStoreId !== storeId) {
+                    // Store changed! Clear cart
+                    set({ items: [], storeId });
+                } else {
+                    set({ storeId });
+                }
+            },
             addToCart: (product, quantity = 1, options = [], note = '') => {
                 set((state) => {
                     // Generate a unique key for grouping (optional but good for comparison)

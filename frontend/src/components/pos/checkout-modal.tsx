@@ -7,8 +7,10 @@ import { useState, useEffect } from 'react';
 import { CheckCircle } from 'lucide-react';
 import { Dialog, DialogContent, DialogOverlay, DialogTitle } from '@/components/ui/dialog';
 
-import { orderApi, OrderCreate, OrderItemCreate, PaymentMethod, OrderSource } from '@/lib/api/orders';
+import { orderApi, OrderCreate, OrderItemCreate, PaymentMethod, OrderSource, OrderType } from '@/lib/api/orders';
+import { settingsApi } from '@/lib/api/settings';
 import { Loader2 } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 interface CheckoutModalProps {
     open: boolean;
@@ -26,6 +28,61 @@ export function CheckoutModal({ open, onClose }: CheckoutModalProps) {
     const [isCompleted, setIsCompleted] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [change, setChange] = useState(0);
+    const [roundingRule, setRoundingRule] = useState('round');
+    const [orderType, setOrderType] = useState<OrderType>(OrderType.TAKE_OUT);
+    const [serviceFeeRate, setServiceFeeRate] = useState(0);
+    const [paymentMethods, setPaymentMethods] = useState<string[]>(['cash']);
+    const [discountPresets, setDiscountPresets] = useState<any[]>([]);
+    const [selectedDiscount, setSelectedDiscount] = useState<any | null>(null);
+    const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<PaymentMethod>(PaymentMethod.CASH);
+
+    // Rounded Total Calculation
+    const applyRounding = (val: number, rule: string) => {
+        switch (rule) {
+            case 'ceil': return Math.ceil(val);
+            case 'floor': return Math.floor(val);
+            case 'round': default: return Math.round(val);
+        }
+    };
+
+    const subtotalValue = total;
+    const currentServiceFeeRate = orderType === OrderType.DINE_IN ? serviceFeeRate : 0;
+    const serviceFeeValue = (subtotalValue * (currentServiceFeeRate / 100));
+
+    // 折扣計算
+    let discountValue = 0;
+    if (selectedDiscount) {
+        if (selectedDiscount.type === 'percent') {
+            discountValue = Math.round(subtotalValue * (selectedDiscount.value / 100));
+        } else {
+            discountValue = selectedDiscount.value;
+        }
+    }
+
+    const finalTotalBeforeRounding = subtotalValue + serviceFeeValue - discountValue;
+    const roundedTotal = applyRounding(Math.max(0, finalTotalBeforeRounding), roundingRule);
+
+    useEffect(() => {
+        if (open && storeId) {
+            settingsApi.getStoreProfile(storeId).then(profile => {
+                if (profile.rounding_rule) {
+                    setRoundingRule(profile.rounding_rule);
+                }
+                if (profile.default_order_type) {
+                    setOrderType(profile.default_order_type as OrderType);
+                }
+                if (profile.default_service_fee_rate !== undefined) {
+                    setServiceFeeRate(profile.default_service_fee_rate);
+                }
+                if (profile.enabled_payment_methods) {
+                    setPaymentMethods(profile.enabled_payment_methods);
+                }
+                if (profile.discount_presets) {
+                    setDiscountPresets(profile.discount_presets);
+                }
+            }).catch(err => console.error("Failed to load store settings:", err));
+        }
+    }, [open, storeId]);
 
     // ... (handlers)
 
@@ -36,7 +93,7 @@ export function CheckoutModal({ open, onClose }: CheckoutModalProps) {
         }
 
         const received = parseInt(cashReceived) || 0;
-        if (received >= total) {
+        if (received >= roundedTotal) {
             setIsLoading(true);
             try {
                 // Prepare payload
@@ -45,11 +102,17 @@ export function CheckoutModal({ open, onClose }: CheckoutModalProps) {
                         var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
                         return v.toString(16);
                     }),
-                    total_amount: total,
-                    payment_method: PaymentMethod.CASH,
+                    total_amount: roundedTotal,
+                    subtotal: subtotalValue,
+                    service_fee: serviceFeeValue,
+                    service_fee_rate: currentServiceFeeRate,
+                    order_type: orderType,
+                    payment_method: selectedPaymentMethod,
                     source: OrderSource.POS,
                     cash_received: received,
-                    change_amount: received - total,
+                    change_amount: received - roundedTotal,
+                    discount_amount: discountValue,
+                    discount_note: selectedDiscount?.name,
                     items: items.map(item => ({
                         product_id: item.productId,
                         quantity: item.quantity,
@@ -71,7 +134,7 @@ export function CheckoutModal({ open, onClose }: CheckoutModalProps) {
                 await orderApi.create(storeId, orderData);
 
                 // Success UI
-                setChange(received - total);
+                setChange(received - roundedTotal);
                 setIsCompleted(true);
                 clearCart();
             } catch (error: any) {
@@ -101,7 +164,7 @@ export function CheckoutModal({ open, onClose }: CheckoutModalProps) {
     };
 
     const handleExactCash = () => {
-        setCashReceived(total.toString());
+        setCashReceived(roundedTotal.toString());
     };
 
 
@@ -201,33 +264,146 @@ export function CheckoutModal({ open, onClose }: CheckoutModalProps) {
                 <div className="w-1/2 bg-slate-50 p-6 border-r border-slate-200 flex flex-col">
                     <div className="flex items-center justify-between mb-6">
                         <h2 className="text-xl font-bold text-slate-900">結帳金額</h2>
-                        <div className="text-3xl font-bold text-[#D4AF37] font-mono">${total}</div>
+                        <div className="text-3xl font-bold text-[#D4AF37] font-mono">${roundedTotal}</div>
+                    </div>
+
+                    <div className="space-y-4 mb-6">
+                        <div className="text-sm font-medium text-slate-500 mb-2">訂單類型</div>
+                        <div className="grid grid-cols-3 gap-2">
+                            <Button
+                                variant={orderType === OrderType.DINE_IN ? 'default' : 'outline'}
+                                onClick={() => setOrderType(OrderType.DINE_IN)}
+                                className="h-10 border-slate-300 transition-all font-bold"
+                            >
+                                內用
+                            </Button>
+                            <Button
+                                variant={orderType === OrderType.TAKE_OUT ? 'default' : 'outline'}
+                                onClick={() => setOrderType(OrderType.TAKE_OUT)}
+                                className="h-10 border-slate-300 transition-all font-bold"
+                            >
+                                外帶
+                            </Button>
+                            <Button
+                                variant={orderType === OrderType.DELIVERY ? 'default' : 'outline'}
+                                onClick={() => setOrderType(OrderType.DELIVERY)}
+                                className="h-10 border-slate-300 transition-all font-bold"
+                            >
+                                外送
+                            </Button>
+                        </div>
+                    </div>
+
+                    <div className="space-y-4 mb-6">
+                        <div className="flex items-center justify-between">
+                            <div className="text-sm font-medium text-slate-500">服務費率 (%)</div>
+                            <div className="flex items-center gap-1">
+                                <span className={`font-bold ${orderType === OrderType.DINE_IN ? 'text-slate-900' : 'text-slate-300'}`}>
+                                    {orderType === OrderType.DINE_IN ? serviceFeeRate : 0}%
+                                </span>
+                                {orderType !== OrderType.DINE_IN && (
+                                    <span className="text-[10px] text-slate-400 font-normal ml-2">(僅內用計費)</span>
+                                )}
+                            </div>
+                        </div>
                     </div>
 
                     <div className="space-y-4 mb-6">
                         <div className="text-sm font-medium text-slate-500 mb-2">支付方式</div>
                         <div className="grid grid-cols-2 gap-3">
-                            <Button variant="default" className="h-12 bg-slate-900 text-white hover:bg-slate-800">現金</Button>
-                            <Button variant="outline" className="h-12 border-slate-300 text-slate-400" disabled>LINE Pay</Button>
+                            {paymentMethods.includes('cash') && (
+                                <Button
+                                    variant={selectedPaymentMethod === PaymentMethod.CASH ? 'default' : 'outline'}
+                                    className={cn("h-12 font-bold", selectedPaymentMethod === PaymentMethod.CASH ? "bg-slate-900 text-white" : "border-slate-300")}
+                                    onClick={() => setSelectedPaymentMethod(PaymentMethod.CASH)}
+                                >
+                                    現金支付
+                                </Button>
+                            )}
+                            {paymentMethods.includes('linepay') && (
+                                <Button
+                                    variant={selectedPaymentMethod === PaymentMethod.LINEPAY ? 'default' : 'outline'}
+                                    className={cn("h-12 font-bold", selectedPaymentMethod === PaymentMethod.LINEPAY ? "bg-green-600 text-white hover:bg-green-700 border-green-200" : "border-slate-300")}
+                                    onClick={() => setSelectedPaymentMethod(PaymentMethod.LINEPAY)}
+                                >
+                                    Line Pay
+                                </Button>
+                            )}
+                            {paymentMethods.includes('platform_collect') && (
+                                <Button
+                                    variant={selectedPaymentMethod === PaymentMethod.PLATFORM_COLLECT ? 'default' : 'outline'}
+                                    className={cn("h-12 font-bold", selectedPaymentMethod === PaymentMethod.PLATFORM_COLLECT ? "bg-orange-500 text-white hover:bg-orange-600 border-orange-200" : "border-slate-300")}
+                                    onClick={() => setSelectedPaymentMethod(PaymentMethod.PLATFORM_COLLECT)}
+                                >
+                                    平台代收
+                                </Button>
+                            )}
                         </div>
                     </div>
+
+                    {/* Discount Selection */}
+                    {discountPresets.length > 0 && (
+                        <div className="space-y-4 mb-6">
+                            <div className="text-sm font-medium text-slate-500 mb-2">優惠折扣</div>
+                            <div className="flex flex-wrap gap-2">
+                                <Button
+                                    variant={!selectedDiscount ? 'secondary' : 'outline'}
+                                    size="sm"
+                                    onClick={() => setSelectedDiscount(null)}
+                                    className="h-8 text-[11px] font-bold"
+                                >
+                                    無折扣
+                                </Button>
+                                {discountPresets.map((discount) => (
+                                    <Button
+                                        key={discount.id}
+                                        variant={selectedDiscount?.id === discount.id ? 'default' : 'outline'}
+                                        size="sm"
+                                        onClick={() => setSelectedDiscount(discount)}
+                                        className={cn(
+                                            "h-8 text-[11px] font-bold",
+                                            selectedDiscount?.id === discount.id ? "bg-red-500 hover:bg-red-600 border-red-200" : "border-slate-300"
+                                        )}
+                                    >
+                                        {discount.name} ({discount.type === 'percent' ? `${discount.value}%` : `$${discount.value}`})
+                                    </Button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
 
                     <div className="mt-auto">
                         <div className="bg-white p-4 rounded-lg border border-slate-200 mb-4">
                             <div className="flex justify-between items-center text-sm text-slate-500">
-                                <span>應收</span>
-                                <span className="font-mono">${total}</span>
+                                <span>商品小計</span>
+                                <span className="font-mono">${subtotalValue}</span>
                             </div>
-                            <div className="flex justify-between items-center text-lg font-bold text-slate-900 mt-1">
+                            <div className="flex justify-between items-center text-sm text-slate-500">
+                                <span>服務費 ({currentServiceFeeRate}%)</span>
+                                <span className="font-mono text-red-500">+${serviceFeeValue.toFixed(0)}</span>
+                            </div>
+                            {discountValue > 0 && (
+                                <div className="flex justify-between items-center text-sm text-slate-500">
+                                    <span>折扣 ({selectedDiscount?.name})</span>
+                                    <span className="font-mono text-green-600">-${discountValue}</span>
+                                </div>
+                            )}
+                            <div className="flex justify-between items-center text-lg font-bold text-slate-900 mt-2 pt-2 border-t border-slate-100 italic">
+                                <span>應收 (已進位)</span>
+                                <span className="font-mono text-2xl text-[#D4AF37]">
+                                    ${roundedTotal}
+                                </span>
+                            </div>
+                            <div className="flex justify-between items-center text-sm text-slate-500 mt-2">
                                 <span>實收</span>
-                                <span className="font-mono text-2xl text-blue-600">
+                                <span className="font-mono text-blue-600 font-bold">
                                     ${cashReceived || '0'}
                                 </span>
                             </div>
-                            <div className="flex justify-between items-center text-sm text-slate-500 mt-2 pt-2 border-t border-slate-100">
+                            <div className="flex justify-between items-center text-sm text-slate-500 mt-2 pt-2 border-t border-dashed border-slate-200">
                                 <span>找零</span>
-                                <span className="font-mono text-lg">
-                                    ${Math.max(0, (parseInt(cashReceived) || 0) - total)}
+                                <span className="font-mono text-lg font-bold">
+                                    ${Math.max(0, (parseInt(cashReceived) || 0) - roundedTotal)}
                                 </span>
                             </div>
                         </div>
@@ -302,7 +478,7 @@ export function CheckoutModal({ open, onClose }: CheckoutModalProps) {
                             <Button
                                 className="h-16 text-xl font-bold bg-[#D4AF37] hover:bg-[#C5A028] text-white shadow-md transition-all active:scale-95"
                                 onClick={handleCheckout}
-                                disabled={(parseInt(cashReceived) || 0) < total || isLoading}
+                                disabled={(parseInt(cashReceived) || 0) < roundedTotal || isLoading}
                             >
                                 {isLoading ? '處理中...' : '結帳 (Enter)'}
                             </Button>
@@ -310,6 +486,6 @@ export function CheckoutModal({ open, onClose }: CheckoutModalProps) {
                     </div>
                 </div>
             </DialogContent>
-        </Dialog>
+        </Dialog >
     );
 }

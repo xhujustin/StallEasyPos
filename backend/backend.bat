@@ -53,9 +53,9 @@ if exist alembic.ini (
 )
 
 :: 執行資料庫同步檢查 (Double Check)
-if exist check_db.py (
+if exist scripts\check_db.py (
     echo [INFO] 正在進行資料庫同步安全性檢查...
-    python check_db.py
+    python scripts\check_db.py
     if %errorlevel% neq 0 (
         echo [ERROR] 資料庫檢查失敗，請依指示修復後再啟動。
         pause
