@@ -42,6 +42,7 @@ class StoreUserUpdate(BaseModel):
     username: Optional[str] = None # Added for renaming
     role: Optional[UserRole] = None
     pin: Optional[str] = None # 6-8 digits, empty string to remove
+    old_pin: Optional[str] = None # For verification when changing PIN
     
     # 詳細資訊
     full_name: Optional[str] = None

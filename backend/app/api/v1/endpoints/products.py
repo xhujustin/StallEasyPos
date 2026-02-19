@@ -1,9 +1,10 @@
 from typing import List, Annotated
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import get_db, get_current_user_id
 from app.services.product_service import ProductService
+from app.services.upload_service import UploadService
 from app.schemas.products import ProductCreate, ProductUpdate, ProductOut
 from app.schemas.common import ResponseBase
 
@@ -72,3 +73,16 @@ async def delete_product(
     """
     await ProductService.delete_product(db, product_id, store_id, current_user_id)
     return ResponseBase(data=True)
+
+@router.post("/upload-image", response_model=ResponseBase[str])
+async def upload_product_image(
+    store_id: Annotated[int, Query()],
+    file: UploadFile = File(...),
+    old_url: Annotated[str, Query()] = None,
+    current_user_id: Annotated[int, Depends(get_current_user_id)] = None
+):
+    """
+    上傳商品圖片
+    """
+    image_url = await UploadService.save_product_image(store_id, file, old_url)
+    return ResponseBase(data=image_url)

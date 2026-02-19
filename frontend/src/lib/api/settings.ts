@@ -65,6 +65,11 @@ export const settingsApi = {
             paper_width: result.data?.paper_width || "80mm",
             auto_print_receipt: result.data?.auto_print_receipt || false,
             open_cash_drawer: result.data?.open_cash_drawer || false,
+            // POS UI 偏好 (設備級別)
+            pos_product_card_size: result.data?.pos_product_card_size || "medium",
+            pos_show_product_image: result.data?.pos_show_product_image ?? true,
+            pos_show_cart_item_details: result.data?.pos_show_cart_item_details ?? true,
+            pos_sound_enabled: result.data?.pos_sound_enabled ?? true,
         };
     },
 

@@ -102,6 +102,8 @@ export interface Order {
     created_by?: {
         id: number;
         username: string;
+        full_name?: string;
+        nickname?: string;
     };
     creator_role?: string;
 }

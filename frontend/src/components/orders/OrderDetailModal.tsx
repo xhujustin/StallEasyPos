@@ -62,7 +62,7 @@ export function OrderDetailModal({ isOpen, order, onClose, onStatusChange }: Ord
                                 {order.order_type === 'dine_in' ? '內用' : order.order_type === 'take_out' ? '外帶' : '外送'}
                             </span>
                             <div className="text-gray-400 text-[10px] uppercase">
-                                {order.created_by?.username || order.source}
+                                {order.created_by?.nickname || order.created_by?.full_name || order.created_by?.username || order.source}
                             </div>
                         </div>
                         <button onClick={onClose} className="text-gray-400 hover:text-gray-600 rounded-full p-1 hover:bg-gray-100">

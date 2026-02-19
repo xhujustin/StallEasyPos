@@ -109,7 +109,25 @@ export const productApi = {
     },
 
     // 刪除商品
-    deleteProduct: async (productId: number, storeId: number): Promise<void> => {
-        await apiClient.delete(`/products/${productId}?store_id=${storeId}`);
+    deleteProduct: async (productId: number, store_id: number): Promise<void> => {
+        await apiClient.delete(`/products/${productId}?store_id=${store_id}`);
+    },
+
+    // 上傳圖片
+    uploadImage: async (storeId: number, file: File, oldImageUrl?: string): Promise<string> => {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        let url = `/products/upload-image?store_id=${storeId}`;
+        if (oldImageUrl) {
+            url += `&old_url=${encodeURIComponent(oldImageUrl)}`;
+        }
+
+        const response = await apiClient.post<ResponseBase<string>>(url, formData, {
+            headers: {
+                'Content-Type': 'multipart/form-data',
+            }
+        });
+        return response.data.data;
     },
 };

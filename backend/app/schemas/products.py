@@ -20,6 +20,7 @@ class ProductCreate(BaseModel):
     price: float
     cost: Optional[float] = None
     category: Optional[str] = None
+    image_url: Optional[str] = None
     attributes: Optional[List[ProductAttributeCreate]] = None
     materials: Optional[List[ProductMaterialCreate]] = None
 
@@ -29,8 +30,8 @@ class ProductUpdate(BaseModel):
     cost: Optional[float] = None
     category: Optional[str] = None
     is_active: Optional[bool] = None
-    attributes: Optional[List[ProductAttributeUpdate]] = None
     image_url: Optional[str] = None
+    attributes: Optional[List[ProductAttributeUpdate]] = None
     materials: Optional[List[ProductMaterialCreate]] = None
 
 class ProductOut(BaseModel):

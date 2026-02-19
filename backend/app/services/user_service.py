@@ -215,20 +215,32 @@ class UserService:
         if user_in.address is not None: user.address = user_in.address
         if user_in.birthday is not None: user.birthday = user_in.birthday
 
-        # 2. 更新 PIN 碼 (同步更新所有店鋪關聯)
+        # 2. 更新 PIN 碼 (同步更新所有店鋪關聯，並驗證舊 PIN)
         if user_in.pin is not None:
+            # 取得該使用者在任意一家店舖的 PIN 紀錄 (目前的系統設計中各店 PIN 碼同步)
+            from app.models.user import StoreUser
+            assoc_query = select(StoreUser).where(StoreUser.user_id == user_id)
+            assocs_result = await db.execute(assoc_query)
+            assocs = assocs_result.scalars().all()
+            
+            # 若已有設定 PIN，則必須驗證舊 PIN
+            existing_pin_hash = next((a.pin_hash for a in assocs if a.pin_hash), None)
+            if existing_pin_hash:
+                if not user_in.old_pin:
+                    raise HTTPException(status_code=400, detail="請輸入原始 PIN 碼以進行驗證")
+                if not security.verify_password(user_in.old_pin, existing_pin_hash):
+                    raise HTTPException(status_code=400, detail="原始 PIN 碼不正確")
+
+            # 準備新 PIN Hash
             if user_in.pin == "":
                 pin_hash = None
             else:
                 if not (6 <= len(user_in.pin) <= 8):
-                    raise HTTPException(status_code=400, detail="PIN must be 6-8 digits")
+                    raise HTTPException(status_code=400, detail="新 PIN 碼必須為 6-8 位數字")
                 pin_hash = security.get_password_hash(user_in.pin)
             
             # 更新所有 StoreUser 紀錄
-            from app.models.user import StoreUser
-            assoc_query = select(StoreUser).where(StoreUser.user_id == user_id)
-            assocs = await db.execute(assoc_query)
-            for assoc in assocs.scalars().all():
+            for assoc in assocs:
                 assoc.pin_hash = pin_hash
 
         await db.commit()

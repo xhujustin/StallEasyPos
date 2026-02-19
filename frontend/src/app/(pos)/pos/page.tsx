@@ -13,6 +13,8 @@ import { Trash2, Plus, Minus, ShoppingCart, Loader2, AlertCircle } from 'lucide-
 import { CheckoutModal } from '@/components/pos/checkout-modal';
 import { ProductOptionDialog } from '@/components/pos/ProductOptionDialog';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { settingsApi } from '@/lib/api/settings';
+import { cn, getFullImageUrl } from '@/lib/utils';
 
 import { CashManagementDialog } from '@/components/pos/CashManagementDialog';
 import { shiftApi } from '@/lib/api/shifts';
@@ -55,12 +57,24 @@ export default function POSPage() {
             return productApi.getAll(storeId)
         },
         enabled: !!storeId,
-        staleTime: 1000 * 60 * 5, // 5 minutes
+        staleTime: 1000 * 10, // 10 seconds
+    });
+
+    const [deviceSettings, setDeviceSettings] = useState({
+        pos_product_card_size: 'medium',
+        pos_show_product_image: true,
     });
 
     useEffect(() => {
         if (storeId) {
             initStore(storeId);
+            // Fetch device settings
+            settingsApi.getDeviceSettings(storeId).then((data: any) => {
+                setDeviceSettings({
+                    pos_product_card_size: data.pos_product_card_size || 'medium',
+                    pos_show_product_image: data.pos_show_product_image ?? true,
+                });
+            });
         }
         setMounted(true);
         // Fetch current shift ID
@@ -113,12 +127,19 @@ export default function POSPage() {
 
     if (!mounted) return null;
 
+    // Grid columns based on size
+    const gridCols = {
+        small: "grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2",
+        medium: "grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4",
+        large: "grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+    }[deviceSettings.pos_product_card_size as 'small' | 'medium' | 'large'] || "grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4";
+
     return (
         <div className="flex w-full h-full overflow-hidden">
             {/* Product Catalog Area (Left) */}
             <div className="flex-1 flex flex-col border-r border-slate-200 bg-slate-50">
                 {/* Category Tabs & Info */}
-                <div className="h-16 border-b border-slate-200 flex items-center px-4 gap-4 bg-white shadow-sm shrink-0">
+                <div className="h-16 border-b border-slate-200 flex items-center px-8 gap-4 bg-white shadow-sm shrink-0">
                     <div className="flex items-center gap-2 overflow-x-auto flex-1 min-w-0 h-full py-2">
                         {categories.map((cat) => (
                             <Button
@@ -142,14 +163,16 @@ export default function POSPage() {
                             <span className="text-sm font-bold text-slate-900 leading-none">{currentStore?.name || '未選擇店鋪'}</span>
                         </div>
                         <div className="flex flex-col items-end justify-center">
-                            <span className="text-sm font-bold text-slate-900 leading-none mb-1">{user?.username}</span>
+                            <span className="text-sm font-bold text-slate-900 leading-none mb-1">
+                                {user?.nickname || user?.full_name || user?.username}
+                            </span>
                             <span className="text-[10px] text-slate-500 font-medium bg-slate-100 px-1.5 py-0.5 rounded leading-none">{translatedRole}</span>
                         </div>
                     </div>
                 </div>
 
                 {/* Product Grid */}
-                <div className="flex-1 overflow-y-auto p-4">
+                <div className="flex-1 overflow-y-auto px-8 py-6">
                     {isLoading ? (
                         <div className="h-full flex flex-col items-center justify-center text-slate-400">
                             <Loader2 className="w-8 h-8 animate-spin mb-2" />
@@ -167,27 +190,41 @@ export default function POSPage() {
                             </Alert>
                         </div>
                     ) : (
-                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                        <div className={cn("grid", gridCols)}>
                             {filteredProducts.map((product) => (
                                 <Card
                                     key={product.id}
-                                    className="cursor-pointer hover:shadow-md transition-shadow active:scale-[0.98] border-slate-200"
+                                    className="cursor-pointer hover:shadow-md transition-shadow active:scale-[0.98] border-slate-200 overflow-hidden"
                                     onClick={() => handleProductClick(product)}
                                 >
-                                    <CardContent className="px-3 pb flex flex-col gap-0 h-full justify-between">
-                                        <div className="w-full aspect-square bg-slate-100 rounded-md mb-3 flex items-center justify-center text-slate-300 relative overflow-hidden">
-                                            {/* Placeholder or Image */}
-                                            {product.image_url ? (
-                                                <img src={product.image_url} alt={product.name} className="object-cover w-full h-full" />
-                                            ) : (
-                                                <span className="text-4xl text-slate-200 font-bold select-none">
-                                                    {product.name.charAt(0)}
-                                                </span>
-                                            )}
-                                        </div>
-                                        <div>
-                                            <h3 className="font-medium text-slate-900 line-clamp-1 text-sm leading-tight">{product.name}</h3>
-                                            <div className="text-[#D4AF37] font-bold mt-1 text-sm leading-tight">
+                                    <CardContent className="p-2 flex flex-col h-full overflow-hidden">
+                                        {/* Image Area - Balanced padding */}
+                                        {true && (
+                                            <div className="w-full aspect-square bg-slate-100 flex items-center justify-center text-slate-300 relative overflow-hidden rounded-lg">
+                                                {product.image_url ? (
+                                                    <img src={getFullImageUrl(product.image_url)} alt={product.name} className="object-cover w-full h-full transition-transform hover:scale-105 duration-300" />
+                                                ) : (
+                                                    <span className={cn(
+                                                        "font-bold select-none text-slate-200",
+                                                        deviceSettings.pos_product_card_size === 'small' ? "text-2xl" : "text-4xl"
+                                                    )}>
+                                                        {product.name.charAt(0)}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        )}
+
+                                        <div className="flex flex-col justify-between flex-1 p-1 px-1.5 pt-2">
+                                            <h3 className={cn(
+                                                "font-bold text-slate-900 line-clamp-2 leading-tight mb-0.5",
+                                                deviceSettings.pos_product_card_size === 'small' ? "text-xs" : "text-sm"
+                                            )}>
+                                                {product.name}
+                                            </h3>
+                                            <div className={cn(
+                                                "text-[#D4AF37] font-black leading-none",
+                                                deviceSettings.pos_product_card_size === 'small' ? "text-[11px]" : "text-sm"
+                                            )}>
                                                 ${product.price}
                                             </div>
                                         </div>
@@ -228,8 +265,15 @@ export default function POSPage() {
                     ) : (
                         <div className="space-y-3">
                             {items.map((item) => (
-                                <div key={item.cartItemId} className="flex gap-3 p-3 bg-slate-50 rounded-lg border border-slate-100">
-                                    <div className="flex-1">
+                                <div key={item.cartItemId} className="flex gap-3 p-3 bg-slate-50 rounded-lg border border-slate-100 items-center">
+                                    <div className="w-12 h-12 bg-white rounded-md border border-slate-200 overflow-hidden flex-shrink-0 flex items-center justify-center text-slate-300">
+                                        {item.image_url ? (
+                                            <img src={getFullImageUrl(item.image_url)} alt={item.name} className="w-full h-full object-cover" />
+                                        ) : (
+                                            <span className="text-xs font-bold text-slate-200">{item.name.charAt(0)}</span>
+                                        )}
+                                    </div>
+                                    <div className="flex-1 min-w-0">
                                         <div className="flex justify-between items-start mb-1">
                                             <div>
                                                 <span className="font-medium text-slate-900 block leading-tight">{item.name}</span>

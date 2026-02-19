@@ -43,7 +43,7 @@ export const ReceiptPrinter = ({ order }: ReceiptPrinterProps) => {
                     <span>{formatDate(order.created_at)}</span>
                 </div>
                 <div className="flex justify-between text-xs mt-1">
-                    <span>收銀員: {order.created_by?.username || order.source}</span>
+                    <span>收銀員: {order.created_by?.nickname || order.created_by?.full_name || order.created_by?.username || order.source}</span>
                     <span className="uppercase">{order.payment_method}</span>
                 </div>
             </div>

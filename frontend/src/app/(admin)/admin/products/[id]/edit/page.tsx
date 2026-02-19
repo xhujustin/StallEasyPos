@@ -6,10 +6,10 @@ import { useAuthStore } from '@/lib/store/auth-store';
 import { productApi, ProductUpdate, Product, ProductMaterial, ProductMaterialCreate, ProductAttribute } from '@/lib/api/products';
 import { categoryApi, Category } from '@/lib/api/categories';
 import { materialApi, Material } from '@/lib/api/materials';
-import { ArrowLeft, Plus, Trash2, Calculator, Settings, Info } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Calculator, Settings, Info, Upload } from 'lucide-react';
 import AttributeManager from '@/components/admin/products/AttributeManager';
 import { Button } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
+import { cn, getFullImageUrl } from '@/lib/utils';
 
 export default function EditProductPage() {
     const router = useRouter();
@@ -135,6 +135,29 @@ export default function EditProductPage() {
 
     const handleRemoveMaterial = (materialId: number) => {
         setProductMaterials(productMaterials.filter(pm => pm.material_id !== materialId));
+    };
+
+    const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file || !selectedStoreId) return;
+
+        // 檢查檔案大小 (例如 2MB)
+        if (file.size > 2 * 1024 * 1024) {
+            alert('檔案大小不能超過 2MB');
+            return;
+        }
+
+        try {
+            setLoading(true);
+            const imageUrl = await productApi.uploadImage(selectedStoreId, file, formData.image_url);
+            // 同時更新顯示與 formData 狀態 (重要：確保之後的 handleSubmit 能拿到最新網址)
+            setFormData(prev => ({ ...prev, image_url: imageUrl }));
+        } catch (error) {
+            console.error('上傳圖片失敗:', error);
+            alert('上傳圖片失敗');
+        } finally {
+            setLoading(false);
+        }
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -308,15 +331,49 @@ export default function EditProductPage() {
                                 />
                             </div>
 
-                            <div className="space-y-2">
-                                <label className="text-sm font-bold text-gray-700 ml-1">圖片網址 (URL)</label>
-                                <input
-                                    type="url"
-                                    value={formData.image_url}
-                                    onChange={(e) => setFormData({ ...formData, image_url: e.target.value })}
-                                    className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#D4AF37]/20 focus:border-[#D4AF37] outline-none transition-all text-sm"
-                                    placeholder="https://"
-                                />
+                            <div className="space-y-4">
+                                <label className="text-sm font-bold text-gray-700 ml-1">商品圖片</label>
+                                <div className="flex items-start gap-6">
+                                    <div className="w-32 h-32 bg-gray-50 border-2 border-dashed border-gray-200 rounded-2xl flex items-center justify-center overflow-hidden relative group">
+                                        {formData.image_url ? (
+                                            <>
+                                                <img
+                                                    src={getFullImageUrl(formData.image_url)}
+                                                    alt="Preview"
+                                                    className="w-full h-full object-cover"
+                                                />
+                                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                                    <Upload className="text-white w-6 h-6" />
+                                                </div>
+                                            </>
+                                        ) : (
+                                            <Upload className="text-gray-300 w-8 h-8" />
+                                        )}
+                                        <input
+                                            type="file"
+                                            accept="image/*"
+                                            onChange={handleImageUpload}
+                                            className="absolute inset-0 opacity-0 cursor-pointer"
+                                            title="上傳圖片"
+                                        />
+                                    </div>
+                                    <div className="flex-1 space-y-3">
+                                        <div className="space-y-1.5">
+                                            <label className="text-xs font-bold text-gray-400 ml-1">圖片網址 (URL)</label>
+                                            <input
+                                                type="url"
+                                                value={formData.image_url}
+                                                onChange={(e) => setFormData({ ...formData, image_url: e.target.value })}
+                                                className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#D4AF37]/20 focus:border-[#D4AF37] outline-none transition-all text-xs"
+                                                placeholder="https://... 或上載檔案"
+                                            />
+                                        </div>
+                                        <p className="text-[10px] text-gray-400 leading-relaxed">
+                                            支援 JPG, PNG 格式，建議尺寸 500x500 像素以上。<br />
+                                            若手動輸入網址，將優先使用該網址。
+                                        </p>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>

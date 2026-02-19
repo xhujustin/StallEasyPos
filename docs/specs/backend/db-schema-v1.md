@@ -52,7 +52,7 @@ CREATE TABLE store_users (
   store_id BIGINT NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
   user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   role user_role NOT NULL,
-  pin_hash TEXT NULL, -- For quick switching
+  pin_hash TEXT NULL, -- 變更 PIN 碼需驗證 old_pin，且不允許於後端直接回傳
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE(store_id, user_id)
@@ -72,6 +72,7 @@ CREATE TABLE products (
   price NUMERIC(10,2) NOT NULL,
   cost NUMERIC(10,2) NULL,
   category TEXT NULL,
+  image_url TEXT NULL, -- 商品圖片 URL，支援自動清理舊圖
   attributes JSONB NULL,
   is_active BOOLEAN NOT NULL DEFAULT TRUE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -131,12 +132,12 @@ CREATE TABLE orders (
   source order_source NOT NULL DEFAULT 'pos',
   status order_status NOT NULL,
   order_type order_type NOT NULL DEFAULT 'take_out',
-  subtotal NUMERIC(10,2) NOT NULL DEFAULT 0,
-  service_fee NUMERIC(10,2) NOT NULL DEFAULT 0,
-  service_fee_rate NUMERIC(10,2) NOT NULL DEFAULT 0,
-  discount_amount NUMERIC(10,2) NOT NULL DEFAULT 0,
-  discount_note TEXT NULL,
-  total_amount NUMERIC(10,2) NOT NULL,
+  subtotal NUMERIC(10,2) NOT NULL DEFAULT 0,     -- 原始總金額 (未計服務費與折扣)
+  service_fee NUMERIC(10,2) NOT NULL DEFAULT 0,  -- 服務費金額
+  service_fee_rate NUMERIC(10,2) NOT NULL DEFAULT 0, -- 服務費率 (%)
+  discount_amount NUMERIC(10,2) NOT NULL DEFAULT 0, -- 折扣金額 (直接扣減)
+  discount_note TEXT NULL,                       -- 折扣原因/備註
+  total_amount NUMERIC(10,2) NOT NULL,           -- 最終應付金額
   payment_method payment_method NULL,
   idempotency_key TEXT NOT NULL,                 -- Critical for offline sync
   business_date DATE NOT NULL DEFAULT (now()::date),

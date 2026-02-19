@@ -30,6 +30,8 @@ class OrderCreate(BaseModel):
     source: OrderSource = OrderSource.POS
     cash_received: Optional[float] = None
     change_amount: Optional[float] = None
+    discount_amount: float = 0
+    discount_note: Optional[str] = None
 
 class OrderItemOut(BaseModel):
     id: int

@@ -48,7 +48,7 @@ function useDebounce<T>(value: T, delay: number): T {
 
 export default function AdminSettingsPage() {
     const router = useRouter();
-    const { user, selectedStoreId } = useAuthStore();
+    const { user, selectedStoreId, updateUser } = useAuthStore();
     const [mounted, setMounted] = useState(false);
     const [loading, setLoading] = useState(true);
     const [syncing, setSyncing] = useState(false);
@@ -82,9 +82,11 @@ export default function AdminSettingsPage() {
     const [profile, setProfile] = useState({
         username: '',
         full_name: '',
+        nickname: '',
         email: '',
         phone: '',
         pin: '',
+        old_pin: '',
     });
 
     const [showPin, setShowPin] = useState(false);
@@ -103,12 +105,16 @@ export default function AdminSettingsPage() {
 
     useEffect(() => {
         if (!mounted) return;
+
+        // 僅在初始化時載入資料，不依賴於 user 的細微變化
+        // 這樣 updateProfile 觸發的 store 更新就不會導致頁面重新載入
         if (!user || !selectedStoreId) {
             router.push('/select-store');
             return;
         }
+
         loadAllData();
-    }, [mounted, user, selectedStoreId]);
+    }, [mounted]);
 
     const loadAllData = async () => {
         if (!selectedStoreId) return;
@@ -133,9 +139,11 @@ export default function AdminSettingsPage() {
                 setProfile({
                     username: userData.data.username || '',
                     full_name: userData.data.full_name || '',
+                    nickname: userData.data.nickname || '',
                     email: userData.data.email || '',
                     phone: userData.data.phone || '',
                     pin: '',
+                    old_pin: '',
                 });
             }
             // 載入完成後延遲開啟監聽，避免初始化觸發同步
@@ -179,9 +187,18 @@ export default function AdminSettingsPage() {
                 await userApi.updateProfile({
                     username: debouncedProfile.username,
                     full_name: debouncedProfile.full_name,
+                    nickname: debouncedProfile.nickname,
                     email: debouncedProfile.email,
                     phone: debouncedProfile.phone,
+                    old_pin: debouncedProfile.old_pin || undefined,
                     pin: debouncedProfile.pin || undefined
+                });
+                updateUser({
+                    username: debouncedProfile.username,
+                    full_name: debouncedProfile.full_name,
+                    nickname: debouncedProfile.nickname,
+                    email: debouncedProfile.email,
+                    phone: debouncedProfile.phone,
                 });
                 setLastSynced(new Date());
             } catch (error) {
@@ -368,6 +385,15 @@ export default function AdminSettingsPage() {
                                             />
                                         </div>
                                         <div className="space-y-1.5">
+                                            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">暱稱 (Nickname)</label>
+                                            <Input
+                                                value={profile.nickname}
+                                                onChange={(e) => setProfile({ ...profile, nickname: e.target.value })}
+                                                placeholder="用於 POS 顯示"
+                                                className="h-12 bg-gray-50 border-gray-200 focus:border-[#D4AF37] transition-all"
+                                            />
+                                        </div>
+                                        <div className="space-y-1.5">
                                             <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">電子郵件</label>
                                             <Input
                                                 value={profile.email}
@@ -397,16 +423,35 @@ export default function AdminSettingsPage() {
                                                 {showPin ? <Eye size={16} /> : <EyeOff size={16} />}
                                             </button>
                                         </div>
-                                        <Input
-                                            type={showPin ? "text" : "password"}
-                                            maxLength={8}
-                                            value={profile.pin}
-                                            onChange={(e) => setProfile({ ...profile, pin: e.target.value.replace(/\D/g, '') })}
-                                            className="h-14 bg-white border-2 border-slate-200 rounded-xl focus:border-[#D4AF37] shadow-sm text-center text-3xl font-black font-mono tracking-widest text-[#D4AF37]"
-                                            placeholder="••••"
-                                        />
+                                        <div className="space-y-3">
+                                            <div className="space-y-1.5">
+                                                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">原始 PIN 碼 (Verify)</label>
+                                                <Input
+                                                    type={showPin ? "text" : "password"}
+                                                    maxLength={8}
+                                                    value={profile.old_pin}
+                                                    onChange={(e) => setProfile({ ...profile, old_pin: e.target.value.replace(/\D/g, '') })}
+                                                    className="h-10 bg-white border-slate-200 rounded-xl focus:border-[#D4AF37] text-center text-xl font-black font-mono tracking-widest text-slate-400"
+                                                    placeholder="••••"
+                                                />
+                                            </div>
+                                            <div className="flex justify-center -my-1">
+                                                <ChevronDown size={14} className="text-slate-300" />
+                                            </div>
+                                            <div className="space-y-1.5">
+                                                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">設定新 PIN 碼</label>
+                                                <Input
+                                                    type={showPin ? "text" : "password"}
+                                                    maxLength={8}
+                                                    value={profile.pin}
+                                                    onChange={(e) => setProfile({ ...profile, pin: e.target.value.replace(/\D/g, '') })}
+                                                    className="h-14 bg-white border-2 border-slate-200 rounded-xl focus:border-[#D4AF37] shadow-sm text-center text-3xl font-black font-mono tracking-widest text-[#D4AF37]"
+                                                    placeholder="••••"
+                                                />
+                                            </div>
+                                        </div>
                                         <p className="text-[10px] text-gray-400 text-center italic mt-1 leading-relaxed">
-                                            若不修改請保持空白<br />輸入 6-8 位數字
+                                            變更 PIN 碼需先輸入原密碼<br />輸入 6-8 位數字
                                         </p>
                                     </div>
                                 </div>

@@ -120,11 +120,13 @@ HTTP Status Code: `4xx` or `5xx`
 ### 7.1 認證 (Auth)
 - `POST /auth/login`: 使用者登入並獲取 Access Token (OAuth2 格式)。
 - `POST /auth/register`: 註冊新使用者。
+- `PUT /users/me/profile`: 使用者自訂個人資料與 PIN 碼。變更 PIN 碼時需傳入 `old_pin` 欄位進行安全性驗證。
 
 ### 7.2 商品 (Products)
 - `GET /products/?store_id={id}`: 取得特定店鋪的所有商品。支援分類與狀態篩選。
 - `POST /products/`: 建立新商品。
 - `PATCH /products/{id}`: 更新商品資訊。
+- `POST /products/upload-image`: 上傳商品圖片。支援 `old_url` 參數以實作伺服器端自動清理舊圖。
 
 ### 7.3 訂單 (Orders)
 - `POST /orders/`: 建立新訂單。支援 **Idempotency Key** 以防止重複提交。

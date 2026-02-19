@@ -5,8 +5,8 @@ import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { productApi, ProductCreate } from '@/lib/api/products';
 import { categoryApi, Category } from '@/lib/api/categories';
-import { ArrowLeft } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { ArrowLeft, Upload } from 'lucide-react';
+import { cn, getFullImageUrl } from '@/lib/utils';
 
 export default function NewProductPage() {
     const router = useRouter();
@@ -46,6 +46,23 @@ export default function NewProductPage() {
             setCategories(data);
         } catch (error) {
             console.error('載入分類失敗:', error);
+        }
+    };
+
+    const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file || !selectedStoreId) return;
+
+        try {
+            setLoading(true);
+            // 這裡還沒有 old_url，因為是新商品
+            const imageUrl = await productApi.uploadImage(selectedStoreId, file);
+            setFormData(prev => ({ ...prev, image_url: imageUrl }));
+        } catch (error) {
+            console.error('上傳圖片失敗:', error);
+            alert('上傳圖片失敗');
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -185,17 +202,39 @@ export default function NewProductPage() {
                                 </div>
                             </div>
 
-                            <div>
-                                <label className="block text-sm font-bold text-gray-700 mb-2">
-                                    商品圖片 (URL)
-                                </label>
-                                <input
-                                    type="url"
-                                    value={formData.image_url}
-                                    onChange={(e) => setFormData({ ...formData, image_url: e.target.value })}
-                                    className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#D4AF37]/20 focus:border-[#D4AF37] outline-none transition-all text-sm"
-                                    placeholder="https://example.com/image.jpg"
-                                />
+                            <div className="space-y-4">
+                                <label className="text-sm font-bold text-gray-700 ml-1">商品圖片</label>
+                                <div className="flex items-start gap-6">
+                                    <div className="w-32 h-32 bg-gray-50 border-2 border-dashed border-gray-200 rounded-2xl flex items-center justify-center overflow-hidden relative group">
+                                        {formData.image_url ? (
+                                            <>
+                                                <img
+                                                    src={getFullImageUrl(formData.image_url)}
+                                                    alt="Preview"
+                                                    className="w-full h-full object-cover"
+                                                />
+                                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                                    <Upload className="text-white w-6 h-6" />
+                                                </div>
+                                            </>
+                                        ) : (
+                                            <Upload className="text-gray-300 w-8 h-8" />
+                                        )}
+                                        <input
+                                            type="file"
+                                            accept="image/*"
+                                            onChange={handleImageUpload}
+                                            className="absolute inset-0 opacity-0 cursor-pointer"
+                                            title="上傳圖片"
+                                        />
+                                    </div>
+                                    <div className="flex-1 space-y-3">
+                                        <div className="space-y-1.5">
+                                            <p className="text-xs font-medium text-gray-500">建議尺寸: 800x800 px</p>
+                                            <p className="text-[10px] text-gray-400 leading-relaxed">支援 JPG, PNG, GIF 格式，檔案大小請勿超過 2MB</p>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
 
                             <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-100">

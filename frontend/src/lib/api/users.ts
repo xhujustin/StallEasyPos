@@ -40,6 +40,7 @@ export interface UpdateStoreUser {
     username?: string;
     role?: UserRole;
     pin?: string;
+    old_pin?: string;
     full_name?: string;
     nickname?: string;
     email?: string;

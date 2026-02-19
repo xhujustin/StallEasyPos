@@ -13,6 +13,7 @@ interface User {
     id: number;
     username: string;
     full_name?: string;
+    nickname?: string;
     email?: string;
     phone?: string;
     is_admin: boolean;
@@ -29,6 +30,7 @@ interface AuthState {
 
     // Actions
     setAuth: (token: string, user: User, mode: 'STAFF' | 'ADMIN') => void;
+    updateUser: (partialUser: Partial<User>) => void;
     setSelectedStore: (storeId: number) => void;  // 設定選擇的店鋪
     logout: () => void;
 }
@@ -48,6 +50,10 @@ export const useAuthStore = create<AuthState>()(
                 isAuthenticated: true,
                 loginMode: mode
             }),
+
+            updateUser: (partialUser) => set((state) => ({
+                user: state.user ? { ...state.user, ...partialUser } : null
+            })),
 
             setSelectedStore: (storeId) => set({
                 selectedStoreId: storeId
