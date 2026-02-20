@@ -17,6 +17,11 @@ call .venv\Scripts\activate
 echo Installing dependencies...
 pip install -r requirements.txt
 
+if not exist "alembic.ini" (
+    echo Initializing Alembic...
+    alembic init migrations
+)
+
 echo Running database migrations...
 alembic upgrade head
 
