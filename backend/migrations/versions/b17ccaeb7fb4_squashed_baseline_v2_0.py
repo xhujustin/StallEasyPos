@@ -16,17 +16,20 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
-    op.execute(sa.text('''﻿CREATE TYPE user_role AS ENUM (\'owner\', \'manager\', \'staff\')
-CREATE TYPE order_source AS ENUM (\'pos\', \'delivery\')
-CREATE TYPE order_type AS ENUM (\'dine_in\', \'take_out\', \'delivery\')
-CREATE TYPE order_status AS ENUM (\'draft\', \'pending_payment\', \'paid\', \'completed\', \'cancelled\', \'needs_review\')
-CREATE TYPE payment_method AS ENUM (\'cash\', \'linepay\', \'platform_collect\')
-CREATE TYPE payment_status AS ENUM (\'created\', \'pending\', \'success\', \'failed\', \'manual_confirmed\', \'voided\')
-CREATE TYPE invoice_status AS ENUM (\'none\', \'pending\', \'issued\', \'failed\', \'voided\')
-CREATE TYPE adjustment_type AS ENUM (\'increase\', \'decrease\')
-CREATE TYPE audit_action AS ENUM (\'order_created\', \'order_voided\', \'payment_created\', \'payment_confirmed\', \'closing_locked\', \'adjustment_created\', \'invoice_requested\', \'invoice_issued\', \'invoice_failed\', \'invoice_retry\')
-CREATE TYPE shift_status AS ENUM (\'open\', \'closed\')
-CREATE TYPE setting_scope AS ENUM (\'store\', \'device\', \'user\')'''))
+    for statement in [
+        "CREATE TYPE user_role AS ENUM ('owner', 'manager', 'staff')",
+        "CREATE TYPE order_source AS ENUM ('pos', 'delivery')",
+        "CREATE TYPE order_type AS ENUM ('dine_in', 'take_out', 'delivery')",
+        "CREATE TYPE order_status AS ENUM ('draft', 'pending_payment', 'paid', 'completed', 'cancelled', 'needs_review')",
+        "CREATE TYPE payment_method AS ENUM ('cash', 'linepay', 'platform_collect')",
+        "CREATE TYPE payment_status AS ENUM ('created', 'pending', 'success', 'failed', 'manual_confirmed', 'voided')",
+        "CREATE TYPE invoice_status AS ENUM ('none', 'pending', 'issued', 'failed', 'voided')",
+        "CREATE TYPE adjustment_type AS ENUM ('increase', 'decrease')",
+        "CREATE TYPE audit_action AS ENUM ('order_created', 'order_voided', 'payment_created', 'payment_confirmed', 'closing_locked', 'adjustment_created', 'invoice_requested', 'invoice_issued', 'invoice_failed', 'invoice_retry')",
+        "CREATE TYPE shift_status AS ENUM ('open', 'closed')",
+        "CREATE TYPE setting_scope AS ENUM ('store', 'device', 'user')",
+    ]:
+        op.execute(sa.text(statement))
     op.execute(sa.text('''CREATE TABLE users (
 	id BIGINT GENERATED ALWAYS AS IDENTITY, 
 	username TEXT NOT NULL, 
@@ -68,8 +71,8 @@ CREATE TYPE setting_scope AS ENUM (\'store\', \'device\', \'user\')'''))
 	CONSTRAINT fk_store_users_store_id_stores FOREIGN KEY(store_id) REFERENCES stores (id) ON DELETE CASCADE, 
 	CONSTRAINT fk_store_users_user_id_users FOREIGN KEY(user_id) REFERENCES users (id) ON DELETE CASCADE
 )'''))
-    op.execute(sa.text('''CREATE INDEX ix_store_users_store_id ON store_users (store_id)
-CREATE INDEX ix_store_users_user_id ON store_users (user_id)'''))
+    op.execute(sa.text('''CREATE INDEX ix_store_users_store_id ON store_users (store_id)'''))
+    op.execute(sa.text('''CREATE INDEX ix_store_users_user_id ON store_users (user_id)'''))
     op.execute(sa.text('''CREATE TABLE products (
 	id BIGINT GENERATED ALWAYS AS IDENTITY, 
 	store_id BIGINT NOT NULL, 
@@ -84,8 +87,8 @@ CREATE INDEX ix_store_users_user_id ON store_users (user_id)'''))
 	CONSTRAINT pk_products PRIMARY KEY (id), 
 	CONSTRAINT fk_products_store_id_stores FOREIGN KEY(store_id) REFERENCES stores (id) ON DELETE CASCADE
 )'''))
-    op.execute(sa.text('''CREATE INDEX idx_products_store_category ON products (store_id, category)
-CREATE INDEX ix_products_store_id ON products (store_id)'''))
+    op.execute(sa.text('''CREATE INDEX idx_products_store_category ON products (store_id, category)'''))
+    op.execute(sa.text('''CREATE INDEX ix_products_store_id ON products (store_id)'''))
     op.execute(sa.text('''CREATE TABLE materials (
 	id BIGINT GENERATED ALWAYS AS IDENTITY, 
 	store_id BIGINT NOT NULL, 
@@ -143,8 +146,8 @@ CREATE INDEX ix_products_store_id ON products (store_id)'''))
 	CONSTRAINT fk_audit_logs_store_id_stores FOREIGN KEY(store_id) REFERENCES stores (id) ON DELETE RESTRICT, 
 	CONSTRAINT fk_audit_logs_actor_user_id_users FOREIGN KEY(actor_user_id) REFERENCES users (id)
 )'''))
-    op.execute(sa.text('''CREATE INDEX idx_audit_entity ON audit_logs (entity_type, entity_id)
-CREATE INDEX idx_audit_store_created ON audit_logs (store_id, created_at)'''))
+    op.execute(sa.text('''CREATE INDEX idx_audit_entity ON audit_logs (entity_type, entity_id)'''))
+    op.execute(sa.text('''CREATE INDEX idx_audit_store_created ON audit_logs (store_id, created_at)'''))
     op.execute(sa.text('''CREATE TABLE shifts (
 	id BIGSERIAL NOT NULL, 
 	store_id BIGINT NOT NULL, 
@@ -166,9 +169,9 @@ CREATE INDEX idx_audit_store_created ON audit_logs (store_id, created_at)'''))
 	CONSTRAINT fk_shifts_opened_by_id_users FOREIGN KEY(opened_by_id) REFERENCES users (id), 
 	CONSTRAINT fk_shifts_closed_by_id_users FOREIGN KEY(closed_by_id) REFERENCES users (id)
 )'''))
-    op.execute(sa.text('''CREATE INDEX ix_shifts_store_id ON shifts (store_id)
-CREATE INDEX ix_shifts_id ON shifts (id)
-CREATE INDEX ix_shifts_status ON shifts (status)'''))
+    op.execute(sa.text('''CREATE INDEX ix_shifts_store_id ON shifts (store_id)'''))
+    op.execute(sa.text('''CREATE INDEX ix_shifts_id ON shifts (id)'''))
+    op.execute(sa.text('''CREATE INDEX ix_shifts_status ON shifts (status)'''))
     op.execute(sa.text('''CREATE TABLE system_settings (
 	id BIGINT GENERATED ALWAYS AS IDENTITY, 
 	store_id BIGINT NOT NULL, 
@@ -182,8 +185,8 @@ CREATE INDEX ix_shifts_status ON shifts (status)'''))
 	CONSTRAINT uq_system_settings_key UNIQUE (store_id, scope, target_id, key), 
 	CONSTRAINT fk_system_settings_store_id_stores FOREIGN KEY(store_id) REFERENCES stores (id) ON DELETE CASCADE
 )'''))
-    op.execute(sa.text('''CREATE INDEX idx_system_settings_key ON system_settings (key)
-CREATE INDEX idx_system_settings_store_scope ON system_settings (store_id, scope)'''))
+    op.execute(sa.text('''CREATE INDEX idx_system_settings_key ON system_settings (key)'''))
+    op.execute(sa.text('''CREATE INDEX idx_system_settings_store_scope ON system_settings (store_id, scope)'''))
     op.execute(sa.text('''CREATE TABLE product_materials (
 	id BIGINT GENERATED ALWAYS AS IDENTITY, 
 	product_id BIGINT NOT NULL, 
@@ -244,10 +247,10 @@ CREATE INDEX idx_system_settings_store_scope ON system_settings (store_id, scope
 	CONSTRAINT fk_orders_voided_by_users FOREIGN KEY(voided_by) REFERENCES users (id), 
 	CONSTRAINT fk_orders_created_by_id_users FOREIGN KEY(created_by_id) REFERENCES users (id)
 )'''))
-    op.execute(sa.text('''CREATE INDEX idx_orders_store_date ON orders (store_id, business_date)
-CREATE INDEX ix_orders_shift_id ON orders (shift_id)
-CREATE INDEX idx_orders_store_status ON orders (store_id, status)
-CREATE INDEX idx_orders_store_created ON orders (store_id, created_at)'''))
+    op.execute(sa.text('''CREATE INDEX idx_orders_store_date ON orders (store_id, business_date)'''))
+    op.execute(sa.text('''CREATE INDEX ix_orders_shift_id ON orders (shift_id)'''))
+    op.execute(sa.text('''CREATE INDEX idx_orders_store_status ON orders (store_id, status)'''))
+    op.execute(sa.text('''CREATE INDEX idx_orders_store_created ON orders (store_id, created_at)'''))
     op.execute(sa.text('''CREATE TABLE shift_transactions (
 	id BIGSERIAL NOT NULL, 
 	shift_id BIGINT NOT NULL, 
@@ -260,8 +263,8 @@ CREATE INDEX idx_orders_store_created ON orders (store_id, created_at)'''))
 	CONSTRAINT fk_shift_transactions_shift_id_shifts FOREIGN KEY(shift_id) REFERENCES shifts (id), 
 	CONSTRAINT fk_shift_transactions_user_id_users FOREIGN KEY(user_id) REFERENCES users (id)
 )'''))
-    op.execute(sa.text('''CREATE INDEX ix_shift_transactions_id ON shift_transactions (id)
-CREATE INDEX ix_shift_transactions_shift_id ON shift_transactions (shift_id)'''))
+    op.execute(sa.text('''CREATE INDEX ix_shift_transactions_id ON shift_transactions (id)'''))
+    op.execute(sa.text('''CREATE INDEX ix_shift_transactions_shift_id ON shift_transactions (shift_id)'''))
     op.execute(sa.text('''CREATE TABLE product_attribute_options (
 	id BIGINT GENERATED ALWAYS AS IDENTITY, 
 	attribute_id BIGINT NOT NULL, 
@@ -310,9 +313,9 @@ CREATE INDEX ix_shift_transactions_shift_id ON shift_transactions (shift_id)''')
 	CONSTRAINT fk_payments_order_id_orders FOREIGN KEY(order_id) REFERENCES orders (id) ON DELETE CASCADE, 
 	CONSTRAINT fk_payments_store_id_stores FOREIGN KEY(store_id) REFERENCES stores (id) ON DELETE RESTRICT
 )'''))
-    op.execute(sa.text('''CREATE INDEX idx_payments_store_created ON payments (store_id, created_at)
-CREATE INDEX idx_payments_status ON payments (status)
-CREATE INDEX ix_payments_order_id ON payments (order_id)'''))
+    op.execute(sa.text('''CREATE INDEX idx_payments_store_created ON payments (store_id, created_at)'''))
+    op.execute(sa.text('''CREATE INDEX idx_payments_status ON payments (status)'''))
+    op.execute(sa.text('''CREATE INDEX ix_payments_order_id ON payments (order_id)'''))
     op.execute(sa.text('''CREATE TABLE invoice_records (
 	id BIGINT GENERATED ALWAYS AS IDENTITY, 
 	store_id BIGINT NOT NULL, 
@@ -333,8 +336,8 @@ CREATE INDEX ix_payments_order_id ON payments (order_id)'''))
 	CONSTRAINT fk_invoice_records_store_id_stores FOREIGN KEY(store_id) REFERENCES stores (id) ON DELETE RESTRICT, 
 	CONSTRAINT fk_invoice_records_order_id_orders FOREIGN KEY(order_id) REFERENCES orders (id) ON DELETE CASCADE
 )'''))
-    op.execute(sa.text('''CREATE INDEX idx_invoices_store_status ON invoice_records (store_id, status)
-CREATE INDEX idx_invoices_failed_since ON invoice_records (failed_since)'''))
+    op.execute(sa.text('''CREATE INDEX idx_invoices_store_status ON invoice_records (store_id, status)'''))
+    op.execute(sa.text('''CREATE INDEX idx_invoices_failed_since ON invoice_records (failed_since)'''))
     op.execute(sa.text('''CREATE TABLE adjustments (
 	id BIGINT GENERATED ALWAYS AS IDENTITY, 
 	store_id BIGINT NOT NULL, 
@@ -364,8 +367,8 @@ CREATE INDEX idx_invoices_failed_since ON invoice_records (failed_since)'''))
 	CONSTRAINT fk_option_materials_option_id_product_attribute_options FOREIGN KEY(option_id) REFERENCES product_attribute_options (id) ON DELETE CASCADE, 
 	CONSTRAINT fk_option_materials_material_id_materials FOREIGN KEY(material_id) REFERENCES materials (id) ON DELETE CASCADE
 )'''))
-    op.execute(sa.text('''CREATE INDEX idx_option_materials_option ON option_materials (option_id)
-CREATE INDEX idx_option_materials_material ON option_materials (material_id)'''))
+    op.execute(sa.text('''CREATE INDEX idx_option_materials_option ON option_materials (option_id)'''))
+    op.execute(sa.text('''CREATE INDEX idx_option_materials_material ON option_materials (material_id)'''))
 
 
 def downgrade() -> None:
