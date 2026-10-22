@@ -11,6 +11,7 @@ import { orderApi, OrderCreate, OrderItemCreate, PaymentMethod, OrderSource, Ord
 import { settingsApi } from '@/lib/api/settings';
 import { Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { hardwareApi } from '@/lib/api/hardware';
 
 interface CheckoutModalProps {
     open: boolean;
@@ -19,7 +20,7 @@ interface CheckoutModalProps {
 
 
 export function CheckoutModal({ open, onClose }: CheckoutModalProps) {
-    const { totalAmount, clearCart, items } = useCartStore();
+    const { totalAmount, clearCart, items, currentOrderNo } = useCartStore();
     const { selectedStoreId, user } = useAuthStore();
     const storeId = selectedStoreId || user?.stores?.[0]?.id;
 
@@ -63,6 +64,12 @@ export function CheckoutModal({ open, onClose }: CheckoutModalProps) {
     const roundedTotal = applyRounding(Math.max(0, finalTotalBeforeRounding), roundingRule);
 
     useEffect(() => {
+        if (open && selectedPaymentMethod === PaymentMethod.LINEPAY) {
+            setCashReceived(roundedTotal.toString());
+        }
+    }, [open, selectedPaymentMethod, roundedTotal]);
+
+    useEffect(() => {
         if (open && storeId) {
             settingsApi.getStoreProfile(storeId).then(profile => {
                 if (profile.rounding_rule) {
@@ -102,6 +109,7 @@ export function CheckoutModal({ open, onClose }: CheckoutModalProps) {
                         var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
                         return v.toString(16);
                     }),
+                    order_no: currentOrderNo || undefined,
                     total_amount: roundedTotal,
                     subtotal: subtotalValue,
                     service_fee: serviceFeeValue,
@@ -131,7 +139,28 @@ export function CheckoutModal({ open, onClose }: CheckoutModalProps) {
                 // console.log("Sending Order Payload:", JSON.stringify(orderData, null, 2));
 
                 // Call API
-                await orderApi.create(storeId, orderData);
+                const result = await orderApi.create(storeId, orderData);
+                const order = result.data;
+
+                // Hardware failures must not roll back a completed sale.
+                try {
+                    const [device, profile] = await Promise.all([
+                        settingsApi.getDeviceSettings(storeId),
+                        settingsApi.getStoreProfile(storeId),
+                    ]);
+                    if (selectedPaymentMethod === PaymentMethod.CASH && device.open_cash_drawer) {
+                        await hardwareApi.openDrawer(storeId);
+                    }
+                    // Number ticket comes out first, followed by the customer's receipt.
+                    if (device.print_number_ticket && order) {
+                        await hardwareApi.printNumberTicket(storeId, order, profile.store_name);
+                    }
+                    if (device.auto_print_receipt && order) {
+                        await hardwareApi.printOrder(storeId, order, profile.store_name);
+                    }
+                } catch (hardwareError) {
+                    console.error('Hardware command failed:', hardwareError);
+                }
 
                 // Success UI
                 setChange(received - roundedTotal);
@@ -195,7 +224,7 @@ export function CheckoutModal({ open, onClose }: CheckoutModalProps) {
                 handleClear();
             } else if (e.key === 'Enter') {
                 const received = parseInt(cashReceived) || 0;
-                if (received >= total) {
+                if (received >= roundedTotal) {
                     handleCheckout();
                 }
             } else if (e.key === 'Escape') {
@@ -205,7 +234,7 @@ export function CheckoutModal({ open, onClose }: CheckoutModalProps) {
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [open, isCompleted, isLoading, cashReceived, total]);
+    }, [open, isCompleted, isLoading, cashReceived, roundedTotal]);
 
     if (isCompleted) {
         return (
@@ -324,7 +353,10 @@ export function CheckoutModal({ open, onClose }: CheckoutModalProps) {
                                 <Button
                                     variant={selectedPaymentMethod === PaymentMethod.LINEPAY ? 'default' : 'outline'}
                                     className={cn("h-12 font-bold", selectedPaymentMethod === PaymentMethod.LINEPAY ? "bg-green-600 text-white hover:bg-green-700 border-green-200" : "border-slate-300")}
-                                    onClick={() => setSelectedPaymentMethod(PaymentMethod.LINEPAY)}
+                                    onClick={() => {
+                                        setSelectedPaymentMethod(PaymentMethod.LINEPAY);
+                                        setCashReceived(roundedTotal.toString());
+                                    }}
                                 >
                                     Line Pay
                                 </Button>

@@ -1,6 +1,5 @@
 'use client';
 
-import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
@@ -8,30 +7,12 @@ import { Button } from '@/components/ui/button';
 import { LayoutDashboard, Box, Users, Settings, FileText, ExternalLink, ChevronDown, Package, BarChart3 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/lib/store/auth-store';
-import { settingsApi } from '@/lib/api/settings';
 import styles from './layout.module.css';
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();
     const router = useRouter();
     const { user, selectedStoreId, setSelectedStore } = useAuthStore();
-    const [receiptWidth, setReceiptWidth] = useState('80mm');
-
-    useEffect(() => {
-        if (!selectedStoreId) return;
-        const loadSettings = async () => {
-            try {
-                const profile = await settingsApi.getStoreProfile(selectedStoreId);
-                if (profile.receipt_width) {
-                    setReceiptWidth(profile.receipt_width);
-                }
-            } catch (error) {
-                console.error('Failed to load store settings for layout:', error);
-            }
-        };
-        loadSettings();
-    }, [selectedStoreId]);
-
     const navItems = [
         { href: '/admin/dashboard', icon: LayoutDashboard, label: '儀表板' },
         { href: '/admin/reports', icon: BarChart3, label: '報表分析' },
@@ -51,7 +32,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     };
 
     return (
-        <div className={styles.container} data-receipt-width={receiptWidth}>
+        <div className={styles.container}>
             <aside className={cn(styles.sidebar, "no-print")}>
                 <div className={styles.header}>
                     <div className={styles.logo}>

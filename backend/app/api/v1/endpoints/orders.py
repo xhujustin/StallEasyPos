@@ -10,6 +10,16 @@ from app.schemas.common import ResponseBase
 
 router = APIRouter()
 
+@router.get("/next-number", response_model=ResponseBase[int])
+async def get_next_order_number(
+    store_id: Annotated[int, Query()],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user_id: Annotated[int, Depends(get_current_user_id)]
+):
+    """取得今日下一個可用的 POS 單號。"""
+    order_no = await OrderService.get_next_order_no(db, store_id, current_user_id)
+    return ResponseBase(data=order_no)
+
 @router.post("/", response_model=ResponseBase[OrderOut])
 async def create_order(
     store_id: Annotated[int, Query()],

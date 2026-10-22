@@ -15,6 +15,8 @@ from app.api.v1.endpoints import (
     dashboard,
     shifts,
     settings,
+    system,
+    hardware,
 )
 
 api_router = APIRouter()
@@ -34,3 +36,5 @@ api_router.include_router(audit.router, prefix="/audit", tags=["audit"])
 api_router.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])
 api_router.include_router(shifts.router, prefix="/shifts", tags=["shifts"])
 api_router.include_router(settings.router, prefix="/settings", tags=["settings"])
+api_router.include_router(system.router, prefix="/system", tags=["system"])
+api_router.include_router(hardware.router, prefix="/hardware", tags=["hardware"])

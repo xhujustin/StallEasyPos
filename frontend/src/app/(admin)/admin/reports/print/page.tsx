@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { shiftApi, Shift } from '@/lib/api/shifts';
 import { orderApi, Order } from '@/lib/api/orders';
 import { productApi, Product } from '@/lib/api/products';
+import { settingsApi } from '@/lib/api/settings';
 import { Button } from '@/components/ui/button';
 import { Printer, ArrowLeft, Loader2, Download, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -42,8 +43,11 @@ interface AnalyticsData {
     }[];
     profitability: {
         cogs: number; // Cost of Goods Sold
+        fixedCosts: number;
         grossProfit: number;
+        netProfit: number;
         margin: number;
+        netMargin: number;
     };
     payments: {
         method: string;
@@ -69,15 +73,75 @@ interface AnalyticsData {
 // Analytics Calculation
 // ==================================================================================
 
-const calculateAnalytics = (orders: Order[], products: Product[], shifts: Shift[]): AnalyticsData => {
+type FixedCostSettings = {
+    monthly_fixed_costs: { amount: number }[];
+    business_days: number[];
+};
+
+const parseLocalDate = (value: string) => {
+    const [year, month, day] = value.slice(0, 10).split('-').map(Number);
+    return new Date(year, month - 1, day, 12);
+};
+
+const calculateAllocatedFixedCosts = (
+    startDate: string | null,
+    endDate: string | null,
+    settings: FixedCostSettings,
+) => {
+    if (!startDate || !endDate) return 0;
+    const monthlyTotal = settings.monthly_fixed_costs.reduce(
+        (sum, item) => sum + Number(item.amount || 0),
+        0
+    );
+    const businessDays = settings.business_days.length > 0
+        ? settings.business_days
+        : [1, 2, 3, 4, 5, 6, 0];
+    const first = parseLocalDate(startDate);
+    const last = parseLocalDate(endDate);
+    if (Number.isNaN(first.getTime()) || Number.isNaN(last.getTime()) || first > last) return 0;
+
+    const operatingDaysPerMonth = new Map<string, number>();
+    const countMonthDays = (year: number, month: number) => {
+        const key = `${year}-${month}`;
+        const cached = operatingDaysPerMonth.get(key);
+        if (cached !== undefined) return cached;
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+        let count = 0;
+        for (let day = 1; day <= daysInMonth; day += 1) {
+            if (businessDays.includes(new Date(year, month, day, 12).getDay())) count += 1;
+        }
+        operatingDaysPerMonth.set(key, count);
+        return count;
+    };
+
+    let allocated = 0;
+    for (const cursor = new Date(first); cursor <= last; cursor.setDate(cursor.getDate() + 1)) {
+        if (!businessDays.includes(cursor.getDay())) continue;
+        const monthOperatingDays = countMonthDays(cursor.getFullYear(), cursor.getMonth());
+        if (monthOperatingDays > 0) allocated += monthlyTotal / monthOperatingDays;
+    }
+    return allocated;
+};
+
+const calculateAnalytics = (
+    orders: Order[],
+    products: Product[],
+    shifts: Shift[],
+    fixedCostSettings: FixedCostSettings,
+    requestedStartDate: string | null,
+    requestedEndDate: string | null,
+): AnalyticsData => {
     // 1. Basic Revenue
     const validOrders = orders.filter(o => !o.is_voided && (o.status === 'paid' || o.status === 'completed'));
     const voidedOrders = orders.filter(o => o.is_voided);
 
-    const grossRevenue = validOrders.reduce((sum, o) => sum + (o.total_amount || 0), 0);
-    const discount = 0;
+    const grossRevenue = validOrders.reduce(
+        (sum, o) => sum + Number(o.subtotal || 0) + Number(o.service_fee || 0),
+        0
+    );
+    const discount = validOrders.reduce((sum, o) => sum + Number(o.discount_amount || 0), 0);
     const refund = 0;
-    const netRevenue = grossRevenue - discount - refund;
+    const netRevenue = validOrders.reduce((sum, o) => sum + Number(o.total_amount || 0), 0);
     const aov = validOrders.length > 0 ? netRevenue / validOrders.length : 0;
 
     // 2. Categories & Products
@@ -101,7 +165,24 @@ const calculateAnalytics = (orders: Order[], products: Product[], shifts: Shift[
             // Product stat
             const pStat = productStats.get(item.name_snapshot || '未知商品') || { count: 0, amount: 0, profit: 0 };
             const itemRevenue = (item.price_snapshot || 0) * (item.quantity || 0);
-            const itemCost = (item.cost_snapshot || 0) * (item.quantity || 0);
+            const recipeUnitCost = (product?.materials || []).reduce(
+                (sum, recipe) => sum + Number(recipe.quantity || 0) * Number(recipe.material?.unit_cost || 0),
+                0
+            );
+            const optionUnitCost = (item.options || []).reduce((sum: number, selected: any) => {
+                const configuredOption = (product?.attributes || [])
+                    .flatMap(attribute => attribute.options || [])
+                    .find(option => option.id === selected.option_id);
+                return sum + (configuredOption?.materials || []).reduce(
+                    (optionSum, recipe) => optionSum + Number(recipe.quantity || 0) * Number(recipe.material?.unit_cost || 0),
+                    0
+                );
+            }, 0);
+            const savedUnitCost = Number(item.cost_snapshot || 0);
+            const unitCost = savedUnitCost > 0
+                ? savedUnitCost
+                : Number(product?.cost ?? recipeUnitCost) + optionUnitCost;
+            const itemCost = unitCost * Number(item.quantity || 0);
             pStat.count += item.quantity;
             pStat.amount += itemRevenue;
             pStat.profit += (itemRevenue - itemCost);
@@ -136,6 +217,14 @@ const calculateAnalytics = (orders: Order[], products: Product[], shifts: Shift[
     const cashRemoved = shifts.reduce((sum, s) => sum + (s.cash_removed || 0), 0);
     const actual = shifts.reduce((sum, s) => sum + (s.final_cash || 0), 0);
     const expected = opening + cashSales + cashAdded - cashRemoved;
+    const orderDates = validOrders.map((order) => order.created_at).sort();
+    const fixedCosts = calculateAllocatedFixedCosts(
+        requestedStartDate || orderDates[0] || null,
+        requestedEndDate || orderDates[orderDates.length - 1] || null,
+        fixedCostSettings,
+    );
+    const grossProfit = netRevenue - totalCogs;
+    const netProfit = grossProfit - fixedCosts;
 
     return {
         revenue: {
@@ -166,8 +255,11 @@ const calculateAnalytics = (orders: Order[], products: Product[], shifts: Shift[
         })),
         profitability: {
             cogs: totalCogs,
-            grossProfit: netRevenue - totalCogs,
-            margin: netRevenue > 0 ? ((netRevenue - totalCogs) / netRevenue) * 100 : 0
+            fixedCosts,
+            grossProfit,
+            netProfit,
+            margin: netRevenue > 0 ? (grossProfit / netRevenue) * 100 : 0,
+            netMargin: netRevenue > 0 ? (netProfit / netRevenue) * 100 : 0,
         },
         payments: Array.from(paymentMap.entries()).map(([method, amount]) => ({
             method,
@@ -368,9 +460,13 @@ const AccountantReportContent = ({
                             <SectionTitle title="成本與毛利" subtitle="Profitability Analysis" />
                             <div className="bg-gray-50 p-4 border border-gray-200">
                                 <StatRow label="食材成本 (COGS)" value={`$${data.profitability.cogs.toLocaleString()}`} />
+                                <StatRow label="期間分攤固定成本" value={`$${Math.round(data.profitability.fixedCosts).toLocaleString()}`} />
                                 <div className="my-2 border-t border-gray-300"></div>
                                 <StatRow label="毛利 (Gross Profit)" value={`$${data.profitability.grossProfit.toLocaleString()}`} isBold />
                                 <StatRow label="毛利率 (Margin %)" value={`${data.profitability.margin.toFixed(1)}%`} isBold className="text-blue-800" />
+                                <div className="my-2 border-t-2 border-gray-300"></div>
+                                <StatRow label="營業淨利 (Net Profit)" value={`$${Math.round(data.profitability.netProfit).toLocaleString()}`} isBold />
+                                <StatRow label="淨利率 (Net Margin %)" value={`${data.profitability.netMargin.toFixed(1)}%`} isBold className="text-emerald-800" />
                             </div>
                         </div>
 
@@ -544,6 +640,7 @@ function ReportPrintContent() {
     const storeName = searchParams.get('storeName') || '店鋪報表';
     const startDate = searchParams.get('startDate');
     const endDate = searchParams.get('endDate');
+    const shiftId = searchParams.get('shiftId');
 
     const [loading, setLoading] = useState(true);
     const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
@@ -555,14 +652,32 @@ function ReportPrintContent() {
                 const sId = parseInt(storeId);
 
                 // Fetch shifts, orders, and products in parallel
-                const [shifts, ordersResponse, products] = await Promise.all([
+                const [allShifts, ordersResponse, products, storeSettings] = await Promise.all([
                     shiftApi.history(sId, 0, 1000, startDate || undefined, endDate || undefined),
-                    orderApi.list(sId, { start_date: startDate || undefined, end_date: endDate || undefined }),
-                    productApi.getAll(sId)
+                    orderApi.list(sId, {
+                        start_date: startDate || undefined,
+                        end_date: endDate || undefined,
+                        shift_id: shiftId ? Number(shiftId) : undefined
+                    }),
+                    productApi.getAll(sId),
+                    settingsApi.getStoreProfile(sId),
                 ]);
 
                 // Calculate analytics
-                const data = calculateAnalytics(ordersResponse.data, products, shifts);
+                const shifts = shiftId
+                    ? allShifts.filter(shift => shift.id === Number(shiftId))
+                    : allShifts;
+                const data = calculateAnalytics(
+                    ordersResponse.data,
+                    products,
+                    shifts,
+                    {
+                        monthly_fixed_costs: storeSettings.monthly_fixed_costs || [],
+                        business_days: storeSettings.business_days || [1, 2, 3, 4, 5, 6, 0],
+                    },
+                    startDate,
+                    endDate,
+                );
                 setAnalytics(data);
             } catch (error) {
                 console.error("Failed to fetch report data", error);
@@ -572,7 +687,7 @@ function ReportPrintContent() {
         };
 
         fetchData();
-    }, [storeId, startDate, endDate]);
+    }, [storeId, startDate, endDate, shiftId]);
 
     const handlePrint = () => {
         window.print();
@@ -605,7 +720,9 @@ function ReportPrintContent() {
         );
     }
 
-    const dateRangeStr = startDate === endDate ? (startDate || '') : `${startDate} ~ ${endDate}`;
+    const dateRangeStr = shiftId
+        ? `班次 #${shiftId}｜${startDate || ''}${startDate !== endDate ? ` ~ ${endDate || ''}` : ''}`
+        : startDate === endDate ? (startDate || '') : `${startDate} ~ ${endDate}`;
 
     return (
         <div className="report-print-page-wrapper">
@@ -630,7 +747,7 @@ function ReportPrintContent() {
                     </Button>
                     <div className="h-4 w-px bg-gray-300"></div>
                     <div>
-                        <h1 className="text-lg font-bold text-slate-900">進階經營報表</h1>
+                        <h1 className="text-lg font-bold text-slate-900">{shiftId ? '單次班次報表' : '進階經營報表'}</h1>
                         <p className="text-[10px] text-gray-500 uppercase tracking-widest">{storeName} • {dateRangeStr || ''}</p>
                     </div>
                 </div>

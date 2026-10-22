@@ -5,25 +5,40 @@ import { Product, ProductAttribute, ProductAttributeOption } from '@/lib/api/pro
 import { CartItemOption } from '@/lib/store/cart-store';
 import { Plus, Minus } from 'lucide-react';
 
+const EMPTY_OPTIONS: CartItemOption[] = [];
+
 interface ProductOptionDialogProps {
     open: boolean;
     onClose: () => void;
     product: Product | null;
-    onConfirm: (options: CartItemOption[], quantity: number) => void;
+    onConfirm: (options: CartItemOption[], quantity: number, note: string) => void;
+    initialOptions?: CartItemOption[];
+    initialQuantity?: number;
+    initialNote?: string;
+    editing?: boolean;
 }
 
-export function ProductOptionDialog({ open, onClose, product, onConfirm }: ProductOptionDialogProps) {
+export function ProductOptionDialog({
+    open, onClose, product, onConfirm, initialOptions = EMPTY_OPTIONS, initialQuantity = 1,
+    initialNote = '', editing = false
+}: ProductOptionDialogProps) {
     const [selectedOptions, setSelectedOptions] = useState<Record<number, number[]>>({}); // attributeId -> [optionId, ...]
     const [quantity, setQuantity] = useState(1);
+    const [note, setNote] = useState('');
 
     useEffect(() => {
         if (open) {
-            setSelectedOptions({});
-            setQuantity(1);
+            const groupedOptions = initialOptions.reduce<Record<number, number[]>>((groups, option) => {
+                groups[option.attributeId] = [...(groups[option.attributeId] || []), option.optionId];
+                return groups;
+            }, {});
+            setSelectedOptions(groupedOptions);
+            setQuantity(initialQuantity);
+            setNote(initialNote);
             // Auto-select defaults if min_selection > 0 and only 1 option?
             // Or just leave empty.
         }
-    }, [open, product]);
+    }, [open, product, initialOptions, initialQuantity, initialNote]);
 
     if (!product) return null;
 
@@ -105,7 +120,7 @@ export function ProductOptionDialog({ open, onClose, product, onConfirm }: Produ
             });
         });
 
-        onConfirm(cartOptions, quantity);
+        onConfirm(cartOptions, quantity, note.trim());
         onClose();
     };
 
@@ -179,6 +194,16 @@ export function ProductOptionDialog({ open, onClose, product, onConfirm }: Produ
                             </Button>
                         </div>
                     </div>
+
+                    <div className="space-y-2">
+                        <label className="text-sm font-medium text-slate-700">客製化備註</label>
+                        <textarea
+                            value={note}
+                            onChange={(event) => setNote(event.target.value)}
+                            placeholder="例如：少冰、分開裝、不加醬"
+                            className="w-full min-h-20 resize-none rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20"
+                        />
+                    </div>
                 </div>
 
                 <div className="p-4 border-t border-slate-200 bg-slate-50">
@@ -187,7 +212,7 @@ export function ProductOptionDialog({ open, onClose, product, onConfirm }: Produ
                         onClick={handleConfirm}
                         disabled={!isValid()}
                     >
-                        加入購物車 - ${calculateTotal()}
+                        {editing ? '更新品項' : '加入購物車'} - ${calculateTotal()}
                     </Button>
                 </div>
             </DialogContent>

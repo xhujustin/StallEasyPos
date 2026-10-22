@@ -20,15 +20,31 @@ export interface CartItem {
     selectedOptions: CartItemOption[];
 }
 
+export interface HeldOrder {
+    id: string;
+    storeId: number;
+    orderNo?: number;
+    createdAt: string;
+    items: CartItem[];
+    total: number;
+}
+
 interface CartState {
     items: CartItem[];
+    heldOrders: HeldOrder[];
     storeId: number | null;
+    currentOrderNo: number | null;
     initStore: (storeId: number) => void;
+    initializeOrderNumbers: (storeId: number, nextOrderNo: number) => void;
     // addToCart now accepts more details
     addToCart: (product: { id: number; name: string; price: number; image_url?: string }, quantity?: number, options?: CartItemOption[], note?: string) => void;
     removeFromCart: (cartItemId: string) => void;
     updateQuantity: (cartItemId: string, quantity: number) => void;
+    updateCartItem: (cartItemId: string, quantity: number, options: CartItemOption[], note: string, basePrice: number) => void;
     clearCart: () => void;
+    holdCart: () => void;
+    restoreHeldOrder: (heldOrderId: string) => void;
+    deleteHeldOrder: (heldOrderId: string) => void;
     totalAmount: () => number;
 }
 
@@ -36,16 +52,49 @@ export const useCartStore = create<CartState>()(
     persist(
         (set, get) => ({
             items: [],
+            heldOrders: [],
             storeId: null,
+            currentOrderNo: null,
             initStore: (storeId) => {
                 const currentStoreId = get().storeId;
                 if (currentStoreId !== null && currentStoreId !== storeId) {
                     // Store changed! Clear cart
-                    set({ items: [], storeId });
+                    set({ items: [], storeId, currentOrderNo: null });
                 } else {
                     set({ storeId });
                 }
             },
+            initializeOrderNumbers: (storeId, nextOrderNo) => set((state) => {
+                const storeOrders = state.heldOrders.filter((order) => order.storeId === storeId);
+                const usedNumbers = new Set(
+                    storeOrders
+                        .map((order) => order.orderNo)
+                        .filter((orderNo): orderNo is number => typeof orderNo === 'number')
+                );
+                let candidate = nextOrderNo;
+                const assignedNumbers = new Map<string, number>();
+                [...storeOrders]
+                    .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
+                    .forEach((order) => {
+                        if (order.orderNo) return;
+                        while (usedNumbers.has(candidate)) candidate += 1;
+                        assignedNumbers.set(order.id, candidate);
+                        usedNumbers.add(candidate);
+                        candidate += 1;
+                    });
+
+                const heldOrders = state.heldOrders.map((order) => {
+                    const assigned = assignedNumbers.get(order.id);
+                    return assigned ? { ...order, orderNo: assigned } : order;
+                });
+                const highestHeldNumber = heldOrders
+                    .filter((order) => order.storeId === storeId)
+                    .reduce((highest, order) => Math.max(highest, order.orderNo || 0), 0);
+                return {
+                    heldOrders,
+                    currentOrderNo: Math.max(nextOrderNo, highestHeldNumber + 1),
+                };
+            }),
             addToCart: (product, quantity = 1, options = [], note = '') => {
                 set((state) => {
                     // Generate a unique key for grouping (optional but good for comparison)
@@ -98,7 +147,55 @@ export const useCartStore = create<CartState>()(
                         ? state.items.map((i) => (i.cartItemId === cartItemId ? { ...i, quantity } : i))
                         : state.items.filter((i) => i.cartItemId !== cartItemId),
                 })),
-            clearCart: () => set({ items: [] }),
+            updateCartItem: (cartItemId, quantity, options, note, basePrice) =>
+                set((state) => ({
+                    items: state.items.map((item) => item.cartItemId === cartItemId
+                        ? {
+                            ...item,
+                            quantity,
+                            note,
+                            selectedOptions: options,
+                            price: Number(basePrice) + options.reduce((sum, option) => sum + Number(option.priceAdjustment), 0),
+                        }
+                        : item),
+                })),
+            clearCart: () => set({ items: [], currentOrderNo: null }),
+            holdCart: () => set((state) => {
+                if (!state.storeId || state.items.length === 0) return state;
+                const heldOrder: HeldOrder = {
+                    id: (typeof crypto !== 'undefined' && crypto.randomUUID)
+                        ? crypto.randomUUID()
+                        : `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+                    storeId: state.storeId,
+                    orderNo: state.currentOrderNo || undefined,
+                    createdAt: new Date().toISOString(),
+                    items: state.items.map(item => ({
+                        ...item,
+                        selectedOptions: item.selectedOptions.map(option => ({ ...option })),
+                    })),
+                    total: state.items.reduce((sum, item) => sum + item.price * item.quantity, 0),
+                };
+                return {
+                    heldOrders: [heldOrder, ...state.heldOrders],
+                    items: [],
+                    currentOrderNo: state.currentOrderNo ? state.currentOrderNo + 1 : null,
+                };
+            }),
+            restoreHeldOrder: (heldOrderId) => set((state) => {
+                const heldOrder = state.heldOrders.find(order => order.id === heldOrderId);
+                if (!heldOrder || heldOrder.storeId !== state.storeId) return state;
+                return {
+                    items: heldOrder.items.map(item => ({
+                        ...item,
+                        selectedOptions: item.selectedOptions.map(option => ({ ...option })),
+                    })),
+                    currentOrderNo: heldOrder.orderNo || state.currentOrderNo,
+                    heldOrders: state.heldOrders.filter(order => order.id !== heldOrderId),
+                };
+            }),
+            deleteHeldOrder: (heldOrderId) => set((state) => ({
+                heldOrders: state.heldOrders.filter(order => order.id !== heldOrderId),
+            })),
             totalAmount: () => get().items.reduce((sum, item) => sum + item.price * item.quantity, 0),
         }),
         {

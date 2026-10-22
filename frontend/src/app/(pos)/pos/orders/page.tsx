@@ -12,16 +12,15 @@ import { useAuthStore } from '@/lib/store/auth-store';
 import { toast } from 'sonner';
 import { OrderDetailModal } from '@/components/orders/OrderDetailModal';
 import { shiftApi } from '@/lib/api/shifts';
-import { ReceiptPrinter } from '@/components/pos/ReceiptPrinter';
+import { hardwareApi } from '@/lib/api/hardware';
 
 export default function OrdersPage() {
-    const { selectedStoreId: storeId } = useAuthStore();
+    const { selectedStoreId: storeId, user } = useAuthStore();
     const [orders, setOrders] = useState<Order[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
     const [isDetailOpen, setIsDetailOpen] = useState(false);
-    const [printingOrder, setPrintingOrder] = useState<Order | null>(null);
 
     const fetchOrders = async () => {
         if (!storeId) return;
@@ -78,13 +77,17 @@ export default function OrdersPage() {
         fetchOrders();
     }, [storeId, searchTerm]);
 
-    const handlePrint = (order: Order, e: React.MouseEvent) => {
+    const handlePrint = async (order: Order, e: React.MouseEvent) => {
         e.stopPropagation();
-        setPrintingOrder(order);
-        // Wait for render
-        setTimeout(() => {
-            window.print();
-        }, 100);
+        if (!storeId) return;
+        try {
+            const storeName = user?.stores?.find(store => store.id === storeId)?.name || 'StallEasy POS';
+            await hardwareApi.printOrder(storeId, order, storeName);
+            toast.success('收據已送至出單機');
+        } catch (error) {
+            console.error('Receipt print failed:', error);
+            toast.error('列印失敗，請檢查出單機連線');
+        }
     };
 
     const handleVoid = async (orderId: number, e: React.MouseEvent) => {
@@ -103,8 +106,11 @@ export default function OrdersPage() {
             console.log("Sending updateStatus request...");
             await orderApi.updateStatus(storeId, orderId, 'cancelled');
             console.log("updateStatus success");
+            setOrders(current => current.map(order =>
+                order.id === orderId ? { ...order, status: 'cancelled', is_voided: true } : order
+            ));
             toast.success("訂單已作廢");
-            fetchOrders(); // Reload list
+            await fetchOrders();
         } catch (error) {
             console.error("Void failed", error);
             toast.error("作廢失敗");
@@ -150,10 +156,6 @@ export default function OrdersPage() {
                         />
                     </div>
                 </div>
-            </div>
-
-            <div className="hidden">
-                <ReceiptPrinter order={printingOrder} />
             </div>
 
             <Card className="flex-1 border-slate-200 shadow-sm overflow-hidden flex flex-col p-0 gap-0">
@@ -270,9 +272,20 @@ export default function OrdersPage() {
                 onClose={() => setIsDetailOpen(false)}
                 order={selectedOrder}
                 onStatusChange={async (id, status) => {
-                    // Since modal handles API call, we just need to refresh
-                    await fetchOrders();
-                    setIsDetailOpen(false);
+                    if (!storeId) return;
+                    try {
+                        await orderApi.updateStatus(storeId, id, status);
+                        setOrders(current => current.map(order =>
+                            order.id === id ? { ...order, status, is_voided: status === 'cancelled' } : order
+                        ));
+                        await fetchOrders();
+                        setIsDetailOpen(false);
+                        setSelectedOrder(null);
+                        toast.success('訂單已作廢');
+                    } catch (error) {
+                        console.error('Void failed:', error);
+                        toast.error('作廢失敗');
+                    }
                 }}
             />
         </div>

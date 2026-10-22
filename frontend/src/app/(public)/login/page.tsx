@@ -144,8 +144,8 @@ export default function LoginPage() {
                 }
             } else {
                 // 如果是個人管理登入模式
-                if (!isAdmin && stores.length === 0) {
-                    setError('此帳號沒有關聯任何店鋪,請聯絡管理員');
+                if (stores.length === 0) {
+                    window.location.href = '/select-store';
                     return;
                 }
 
@@ -188,6 +188,9 @@ export default function LoginPage() {
                                 value={username}
                                 onFocus={() => setActiveField('username')}
                                 onChange={(e) => setUsername(e.target.value)}
+                                inputMode="text"
+                                autoCapitalize="none"
+                                autoCorrect="off"
                                 className={cn(
                                     "text-center text-3xl tracking-widest font-bold h-16 bg-slate-50 border-2 transition-all duration-200 px-14",
                                     activeField === 'username' ? "border-[#D4AF37] bg-white ring-4 ring-[#D4AF37]/5" : "border-slate-100"

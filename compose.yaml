@@ -1,0 +1,71 @@
+name: stalleasy-pos
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: stalleasypos
+      POSTGRES_USER: stalleasy
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?請先在 .env 設定 POSTGRES_PASSWORD}
+      TZ: Asia/Taipei
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U stalleasy -d stalleasypos"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  backend:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+asyncpg://stalleasy:${POSTGRES_PASSWORD}@db:5432/stalleasypos
+      SECRET_KEY: ${SECRET_KEY:?請先在 .env 設定 SECRET_KEY}
+      PROJECT_NAME: StallEasyPos
+      API_V1_STR: /api/v1
+      BACKEND_CORS_ORIGINS: '["http://localhost:3000"]'
+      SEED_INITIAL_DATA: ${SEED_INITIAL_DATA:-true}
+      SETUP_DEFAULT_CREDENTIALS: ${SETUP_DEFAULT_CREDENTIALS:-true}
+      SEED_SAMPLE_PRODUCTS: ${SEED_SAMPLE_PRODUCTS:-false}
+      HOST_CONTROL_DIR: /app/host-control
+      TZ: Asia/Taipei
+    ports:
+      - "8000:8000"
+    volumes:
+      - uploads_data:/app/uploads
+      - /var/lib/stalleasy/control:/app/host-control
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  frontend:
+    build:
+      context: ./frontend
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Taipei
+    ports:
+      - "3000:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3000/"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+volumes:
+  postgres_data:
+  uploads_data:

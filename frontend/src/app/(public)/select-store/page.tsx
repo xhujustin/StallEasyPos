@@ -2,15 +2,30 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAuthStore } from '@/lib/store/auth-store';
+import { Store as StoreRecord, useAuthStore } from '@/lib/store/auth-store';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Store, Building2 } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
+import { Store, Building2, Plus, Loader2 } from 'lucide-react';
+import { storeApi } from '@/lib/api/stores';
+import { userApi } from '@/lib/api/users';
 
 export default function SelectStorePage() {
     const router = useRouter();
-    const { user, selectedStoreId, setSelectedStore } = useAuthStore();
+    const { user, selectedStoreId, setSelectedStore, updateUser } = useAuthStore();
     const [mounted, setMounted] = useState(false);
+    const [showCreate, setShowCreate] = useState(false);
+    const [newStoreName, setNewStoreName] = useState('');
+    const [creating, setCreating] = useState(false);
+    const [createError, setCreateError] = useState('');
 
     // 處理hydration
     useEffect(() => {
@@ -27,14 +42,6 @@ export default function SelectStorePage() {
             return;
         }
 
-        // 如果沒有店鋪且不是全域管理員,跳轉回登入頁
-        const isAdmin = (user as any)?.is_admin;
-        const stores = user?.stores || [];
-        if (!isAdmin && stores.length === 0) {
-            router.push('/login');
-            return;
-        }
-
         // 注意:不要在這裡處理單店邏輯,因為登入頁面已經處理了
         // 如果使用者真的到達這個頁面,表示他們有多個店鋪
     }, [mounted, user, router]);
@@ -44,12 +51,36 @@ export default function SelectStorePage() {
         return null;
     }
 
-    const isAdmin = (user as any)?.is_admin;
+    const isAdmin = user?.is_admin;
     const stores = user?.stores || [];
 
-    if (!user || (!isAdmin && stores.length === 0)) {
+    if (!user) {
         return null; // 等待重定向
     }
+
+    const handleCreateStore = async () => {
+        const name = newStoreName.trim();
+        if (!name) {
+            setCreateError('請輸入店鋪名稱');
+            return;
+        }
+        try {
+            setCreating(true);
+            setCreateError('');
+            const created = await storeApi.create(name);
+            const freshUser = await userApi.me();
+            if (freshUser.data) updateUser({ stores: freshUser.data.stores || [] });
+            setSelectedStore(created.id);
+            setShowCreate(false);
+            setNewStoreName('');
+            router.push('/admin/settings');
+        } catch (error: unknown) {
+            const detail = (error as { response?: { data?: { detail?: string } } }).response?.data?.detail;
+            setCreateError(detail || '新增店鋪失敗，請稍後再試');
+        } finally {
+            setCreating(false);
+        }
+    };
 
     const handleSelectStore = (storeId: number) => {
         setSelectedStore(storeId);
@@ -67,11 +98,11 @@ export default function SelectStorePage() {
 
     // 判斷使用者是否有owner角色
     const hasOwnerRole = isAdmin || stores.some(
-        (store: any) => store.user_role === 'owner' || store.owner_id === user.id
+        (store) => store.user_role === 'owner' || store.owner_id === user.id
     );
 
     // 取得角色標籤
-    const getRoleBadge = (store: any) => {
+    const getRoleBadge = (store: StoreRecord) => {
         if (store.user_role) {
             switch (store.user_role) {
                 case 'owner':
@@ -102,9 +133,23 @@ export default function SelectStorePage() {
                             </p>
                         </div>
 
+                        <Button
+                            className="mb-6 h-12 w-full bg-[#D4AF37] font-bold text-white hover:bg-[#C5A028]"
+                            onClick={() => setShowCreate(true)}
+                        >
+                            <Plus className="mr-2 h-5 w-5" />
+                            新增店鋪
+                        </Button>
+
+                        {stores.length === 0 && (
+                            <div className="mb-6 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm text-slate-500">
+                                尚未建立店鋪，請先新增第一間店鋪。
+                            </div>
+                        )}
+
                         {/* 店鋪網格 */}
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-                            {stores.map((store: any) => (
+                            {stores.map((store) => (
                                 <Card
                                     key={store.id}
                                     className="cursor-pointer hover:shadow-lg transition-all hover:scale-105 border-2 border-slate-200 hover:border-[#D4AF37]"
@@ -143,6 +188,38 @@ export default function SelectStorePage() {
                     </CardContent>
                 </Card>
             </div>
+
+            <Dialog open={showCreate} onOpenChange={setShowCreate}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>新增店鋪</DialogTitle>
+                        <DialogDescription>建立後會自動將您設為店鋪負責人。</DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-2 py-2">
+                        <label className="text-sm font-bold text-slate-700">店鋪名稱</label>
+                        <Input
+                            value={newStoreName}
+                            onChange={(event) => {
+                                setNewStoreName(event.target.value);
+                                setCreateError('');
+                            }}
+                            onKeyDown={(event) => {
+                                if (event.key === 'Enter' && !creating) handleCreateStore();
+                            }}
+                            placeholder="例如：台北總店"
+                            autoFocus
+                        />
+                        {createError && <p className="text-sm text-red-600">{createError}</p>}
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setShowCreate(false)} disabled={creating}>取消</Button>
+                        <Button onClick={handleCreateStore} disabled={creating}>
+                            {creating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                            建立店鋪
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }

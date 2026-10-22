@@ -21,7 +21,8 @@ import {
     Coins,
     Type,
     Settings,
-    ChevronDown
+    ChevronDown,
+    Power
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -29,12 +30,16 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { hardwareApi, DetectedPrinter } from '@/lib/api/hardware';
 
 interface DeviceSettings {
     printer_ip: string;
     printer_type: string;
+    printer_port: number;
+    printer_usb_path: string;
     paper_width: string;
     auto_print_receipt: boolean;
+    print_number_ticket: boolean;
     open_cash_drawer: boolean;
     pos_product_card_size: string;
     pos_show_product_image: boolean;
@@ -44,16 +49,27 @@ interface DeviceSettings {
 
 export default function POSSettingsPage() {
     const { user, selectedStoreId, updateUser } = useAuthStore();
+    const canShutdown = Boolean(
+        user?.is_admin || user?.stores?.some(
+            (store) => store.id === selectedStoreId && store.user_role === 'owner'
+        )
+    );
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    const [shuttingDown, setShuttingDown] = useState(false);
+    const [scanning, setScanning] = useState(false);
+    const [detectedPrinters, setDetectedPrinters] = useState<DetectedPrinter[]>([]);
     const [mounted, setMounted] = useState(false);
 
     // 硬體與偏好設定
     const [deviceSettings, setDeviceSettings] = useState<DeviceSettings>({
         printer_ip: '',
         printer_type: 'network',
-        paper_width: '80mm',
+        printer_port: 9100,
+        printer_usb_path: '/dev/usb/lp0',
+        paper_width: '57mm',
         auto_print_receipt: false,
+        print_number_ticket: false,
         open_cash_drawer: false,
         pos_product_card_size: 'medium',
         pos_show_product_image: true,
@@ -104,6 +120,7 @@ export default function POSSettingsPage() {
                     old_pin: '',
                 });
             }
+            void scanPrinters(false);
         } catch (error) {
             console.error('Failed to load settings:', error);
             toast.error("載入失敗: 無法取得目前的設定資訊");
@@ -156,12 +173,67 @@ export default function POSSettingsPage() {
         }
     };
 
-    const runPrinterTest = () => {
-        toast.info(`正在發送測試指令至 ${deviceSettings.printer_ip || '預設印表機'}...`);
+    const runPrinterTest = async () => {
+        if (!selectedStoreId) return;
+        try {
+            await autoSaveDeviceSettings(deviceSettings);
+            await hardwareApi.testPrint(selectedStoreId);
+            toast.success('測試單已送出');
+        } catch (error: any) {
+            toast.error(error.response?.data?.detail || '測試列印失敗');
+        }
     };
 
-    const runDrawerTest = () => {
-        toast.info("正在發送開錢箱脈衝指令...");
+    const runDrawerTest = async () => {
+        if (!selectedStoreId) return;
+        try {
+            await autoSaveDeviceSettings(deviceSettings);
+            await hardwareApi.openDrawer(selectedStoreId);
+            toast.success('開錢箱指令已送出');
+        } catch (error: any) {
+            toast.error(error.response?.data?.detail || '錢箱開啟失敗');
+        }
+    };
+
+    const scanPrinters = async (showResult = true) => {
+        if (!selectedStoreId || scanning) return;
+        try {
+            setScanning(true);
+            const devices = await hardwareApi.scanDevices(selectedStoreId);
+            setDetectedPrinters(devices);
+            if (showResult) {
+                devices.length
+                    ? toast.success(`找到 ${devices.length} 台可用裝置`)
+                    : toast.info('找不到裝置，仍可手動輸入 IP 或 USB 路徑');
+            }
+        } catch (error: any) {
+            if (showResult) toast.error(error.response?.data?.detail || error.message || '裝置掃描失敗');
+        } finally {
+            setScanning(false);
+        }
+    };
+
+    const selectDetectedPrinter = (selected: string) => {
+        const device = detectedPrinters.find(item => `${item.type}:${item.value}` === selected);
+        if (!device) return;
+        if (device.type === 'network') {
+            updateAndSave({ printer_type: 'network', printer_ip: device.value, printer_port: 9100 });
+        } else {
+            updateAndSave({ printer_type: 'usb', printer_usb_path: device.value });
+        }
+    };
+
+    const handleShutdown = async () => {
+        if (!selectedStoreId) return;
+        if (!window.confirm('確定要安全關閉 Raspberry Pi 嗎？所有 POS 裝置將中斷連線。')) return;
+        try {
+            setShuttingDown(true);
+            await settingsApi.shutdownHost(selectedStoreId);
+            toast.success('已送出安全關機指令，系統將在數秒內關閉');
+        } catch (error: any) {
+            toast.error(error.response?.data?.detail || '關機失敗，請確認目前帳號權限與主機設定');
+            setShuttingDown(false);
+        }
     };
 
     if (!mounted || loading) {
@@ -186,6 +258,18 @@ export default function POSSettingsPage() {
                     </div>
                 </div>
                 <div className="flex items-center gap-4">
+                    {canShutdown && (
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handleShutdown}
+                            disabled={shuttingDown}
+                            className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
+                        >
+                            <Power className="mr-2 h-4 w-4" />
+                            {shuttingDown ? '正在關機…' : '安全關機'}
+                        </Button>
+                    )}
                     <div className="flex items-center gap-2 text-slate-400 text-xs font-medium">
                         <div className="w-1.5 h-1.5 rounded-full bg-green-500" />
                         設定已自動同步至雲端
@@ -216,18 +300,61 @@ export default function POSSettingsPage() {
                             </div>
                             <Card className="border-slate-200 shadow-sm flex-1">
                                 <CardContent className="p-6 space-y-6">
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div className="space-y-2">
+                                        <div className="flex items-center justify-between gap-3">
+                                            <Label className="text-xs text-slate-500 uppercase font-bold tracking-wider">自動偵測到的裝置</Label>
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() => scanPrinters(true)}
+                                                disabled={scanning}
+                                            >
+                                                <RefreshCcw className={cn("mr-2 h-3.5 w-3.5", scanning && "animate-spin")} />
+                                                {scanning ? '掃描中…' : '重新掃描'}
+                                            </Button>
+                                        </div>
+                                        <select
+                                            value=""
+                                            onChange={(e) => selectDetectedPrinter(e.target.value)}
+                                            className="w-full h-11 px-3 bg-amber-50 border border-amber-200 rounded-md text-sm font-bold focus:outline-none focus:ring-2 focus:ring-amber-300"
+                                            disabled={scanning || detectedPrinters.length === 0}
+                                        >
+                                            <option value="">
+                                                {scanning ? '正在搜尋 USB 與 Wi-Fi 印表機…' : detectedPrinters.length ? '請選擇偵測到的印表機' : '尚未掃描到裝置'}
+                                            </option>
+                                            {detectedPrinters.map(device => (
+                                                <option key={`${device.type}:${device.value}`} value={`${device.type}:${device.value}`}>
+                                                    {device.type === 'usb' ? 'USB' : 'Wi-Fi'}｜{device.label}
+                                                </option>
+                                            ))}
+                                        </select>
+                                        <p className="text-[10px] text-slate-400">Wi-Fi 會搜尋同一區域網路中使用 9100 連接埠的出單機；USB 會列出主機已辨識的印表機。</p>
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                         <div className="space-y-2">
-                                            <Label className="text-xs text-slate-500 uppercase font-bold tracking-wider">印表機 IP 地址</Label>
+                                            <Label className="text-xs text-slate-500 uppercase font-bold tracking-wider">連線方式</Label>
+                                            <select
+                                                value={deviceSettings.printer_type}
+                                                onChange={(e) => updateAndSave({ printer_type: e.target.value })}
+                                                className="w-full h-11 px-3 bg-slate-50 border border-slate-200 rounded-md text-sm font-bold"
+                                            >
+                                                <option value="network">Wi-Fi / 網路</option>
+                                                <option value="usb">USB</option>
+                                            </select>
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label className="text-xs text-slate-500 uppercase font-bold tracking-wider">
+                                                {deviceSettings.printer_type === 'network' ? '印表機 IP 地址' : 'USB 裝置路徑'}
+                                            </Label>
                                             <div className="flex gap-2">
                                                 <Input
-                                                    value={deviceSettings.printer_ip}
-                                                    onChange={(e) => setDeviceSettings({ ...deviceSettings, printer_ip: e.target.value })}
+                                                    value={deviceSettings.printer_type === 'network' ? deviceSettings.printer_ip : deviceSettings.printer_usb_path}
+                                                    onChange={(e) => setDeviceSettings({ ...deviceSettings, [deviceSettings.printer_type === 'network' ? 'printer_ip' : 'printer_usb_path']: e.target.value })}
                                                     onBlur={() => autoSaveDeviceSettings(deviceSettings)}
-                                                    placeholder="192.168.1.100"
+                                                    placeholder={deviceSettings.printer_type === 'network' ? '192.168.1.100' : '/dev/usb/lp0'}
                                                     className="bg-slate-50 border-slate-200 font-mono font-bold h-11"
                                                 />
-                                                <Button variant="outline" className="h-11 px-4" onClick={runPrinterTest}>測試</Button>
                                             </div>
                                         </div>
                                         <div className="space-y-2">
@@ -281,11 +408,42 @@ export default function POSSettingsPage() {
                                                 )} />
                                             </button>
                                         </div>
+
+                                        <div className="p-4 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between">
+                                            <div className="flex flex-col">
+                                                <span className="text-sm font-bold text-slate-700">列印號碼牌</span>
+                                                <span className="text-[10px] text-slate-400">結帳後另印取餐號碼</span>
+                                            </div>
+                                            <button
+                                                onClick={() => updateAndSave({ print_number_ticket: !deviceSettings.print_number_ticket })}
+                                                className={cn(
+                                                    "w-12 h-6 rounded-full relative transition-all duration-300 shadow-inner shrink-0 ml-2",
+                                                    deviceSettings.print_number_ticket ? "bg-green-500" : "bg-slate-300"
+                                                )}
+                                            >
+                                                <div className={cn(
+                                                    "absolute top-1 w-4 h-4 bg-white rounded-full transition-all shadow-sm",
+                                                    deviceSettings.print_number_ticket ? "right-1" : "left-1"
+                                                )} />
+                                            </button>
+                                        </div>
                                     </div>
 
-                                    <div className="pt-2">
-                                        <Button variant="ghost" className="w-full h-11 border border-dashed border-slate-300 text-slate-500 hover:bg-slate-100 rounded-xl font-bold" onClick={runDrawerTest}>
-                                            <Coins className="mr-2 h-4 w-4" /> 點擊測試開啟錢箱
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
+                                        <Button
+                                            type="button"
+                                            className="h-12 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold"
+                                            onClick={runPrinterTest}
+                                        >
+                                            <Printer className="mr-2 h-4 w-4" /> 測試列印
+                                        </Button>
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            className="h-12 border-2 border-[#D4AF37] text-amber-700 hover:bg-amber-50 rounded-xl font-bold"
+                                            onClick={runDrawerTest}
+                                        >
+                                            <Coins className="mr-2 h-4 w-4" /> 測試開錢箱
                                         </Button>
                                     </div>
                                 </CardContent>

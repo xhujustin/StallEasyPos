@@ -1,12 +1,12 @@
 from datetime import datetime
 from typing import Optional
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 class StoreCreate(BaseModel):
-    name: str
+    name: str = Field(min_length=1, max_length=100)
 
 class StoreUpdate(BaseModel):
-    name: Optional[str] = None
+    name: Optional[str] = Field(default=None, min_length=1, max_length=100)
 
 class StoreOut(BaseModel):
     id: int

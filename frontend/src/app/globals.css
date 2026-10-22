@@ -167,7 +167,9 @@
     position: absolute;
     left: 0;
     top: 0;
-    width: var(--receipt-width, 80mm);
+    width: var(--receipt-width, 57mm);
+    margin: 0 !important;
+    padding-top: 0 !important;
   }
 
   /* Force A4 for specific reports */

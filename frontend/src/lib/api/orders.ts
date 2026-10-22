@@ -34,6 +34,7 @@ export interface OrderItemCreate {
 
 export interface OrderCreate {
     idempotency_key: string;
+    order_no?: number;
     items: OrderItemCreate[];
     total_amount: number;
     subtotal: number;
@@ -79,6 +80,7 @@ export enum OrderStatus {
 export interface Order {
     id: number;
     store_id: number;
+    shift_id?: number;
     order_no: number;
     status: OrderStatus | string;
     order_type: OrderType | string;
@@ -93,6 +95,7 @@ export interface Order {
     items: OrderItem[];
     is_voided: boolean;
     voided_at?: string;
+    void_reason?: string;
     idempotency_key: string;
 
     cash_received?: number;
@@ -109,6 +112,11 @@ export interface Order {
 }
 
 export const orderApi = {
+    getNextNumber: async (storeId: number) => {
+        const response = await apiClient.get<ResponseBase<number>>(`/orders/next-number?store_id=${storeId}`);
+        return response.data.data;
+    },
+
     create: async (storeId: number, data: OrderCreate) => {
         const response = await apiClient.post<ResponseBase<Order>>(`/orders/?store_id=${storeId}`, data);
         return response.data;

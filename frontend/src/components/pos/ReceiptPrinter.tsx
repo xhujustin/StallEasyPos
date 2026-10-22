@@ -29,9 +29,9 @@ export const ReceiptPrinter = ({ order }: ReceiptPrinterProps) => {
     };
 
     return createPortal(
-        <div className="print-only-container bg-white text-black font-mono text-sm p-4 w-[80mm] mx-auto">
+        <div className="print-only-container bg-white text-black font-mono text-[12px] px-1 py-0 w-[57mm] mx-auto">
             {/* Store Name - Placeholder or from Context */}
-            <div className="text-center mb-4">
+            <div className="text-center mb-2">
                 <h1 className="text-xl font-bold">StallEasy POS</h1>
                 <p className="text-xs mt-1">感謝您的光臨</p>
             </div>
@@ -97,8 +97,30 @@ export const ReceiptPrinter = ({ order }: ReceiptPrinterProps) => {
 
             {/* Totals */}
             <div className="border-t border-black border-dashed pt-2 mb-4">
-                <div className="flex justify-between font-bold text-lg">
-                    <span>總計</span>
+                <div className="flex justify-between text-sm">
+                    <span>小計</span>
+                    <span>{formatCurrency(Number(order.subtotal))}</span>
+                </div>
+                {Number(order.service_fee) > 0 && (
+                    <div className="flex justify-between text-sm">
+                        <span>服務費</span>
+                        <span>{formatCurrency(Number(order.service_fee))}</span>
+                    </div>
+                )}
+                {Number(order.discount_amount) > 0 && (
+                    <>
+                        <div className="flex justify-between text-sm">
+                            <span>優惠折扣名稱</span>
+                            <span>{order.discount_note || '優惠'}</span>
+                        </div>
+                        <div className="flex justify-between text-sm">
+                            <span>折扣金額</span>
+                            <span>-{formatCurrency(Number(order.discount_amount))}</span>
+                        </div>
+                    </>
+                )}
+                <div className="flex justify-between font-bold text-lg mt-1">
+                    <span>{Number(order.discount_amount) > 0 ? '折後總計' : '總計'}</span>
                     <span>{formatCurrency(order.total_amount)}</span>
                 </div>
                 {(order.cash_received != null && order.change_amount != null) && (
@@ -116,7 +138,7 @@ export const ReceiptPrinter = ({ order }: ReceiptPrinterProps) => {
             </div>
 
             {/* Footer */}
-            <div className="text-center text-xs mt-6">
+            <div className="text-center text-xs mt-3 pb-3">
                 <p>*** 收據 ***</p>
                 <p className="mt-1">{order.idempotency_key.slice(0, 8)}</p>
             </div>

@@ -3,13 +3,13 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { useCartStore, CartItemOption } from '@/lib/store/cart-store';
+import { useCartStore, CartItem, CartItemOption } from '@/lib/store/cart-store';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { productApi, Product } from '@/lib/api/products';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Trash2, Plus, Minus, ShoppingCart, Loader2, AlertCircle } from 'lucide-react';
+import { Trash2, Plus, Minus, ShoppingCart, Loader2, AlertCircle, Clock3, RotateCcw } from 'lucide-react';
 import { CheckoutModal } from '@/components/pos/checkout-modal';
 import { ProductOptionDialog } from '@/components/pos/ProductOptionDialog';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -18,12 +18,20 @@ import { cn, getFullImageUrl } from '@/lib/utils';
 
 import { CashManagementDialog } from '@/components/pos/CashManagementDialog';
 import { shiftApi } from '@/lib/api/shifts';
+import { hardwareApi } from '@/lib/api/hardware';
+import { orderApi } from '@/lib/api/orders';
+import { toast } from 'sonner';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 export default function POSPage() {
     const router = useRouter();
     const [mounted, setMounted] = useState(false);
     const [showCheckout, setShowCheckout] = useState(false);
-    const { items, addToCart, removeFromCart, updateQuantity, totalAmount, initStore } = useCartStore();
+    const [showHeldOrders, setShowHeldOrders] = useState(false);
+    const {
+        items, heldOrders, currentOrderNo, addToCart, removeFromCart, updateQuantity, totalAmount,
+        updateCartItem, initStore, initializeOrderNumbers, holdCart, restoreHeldOrder, deleteHeldOrder
+    } = useCartStore();
     const [activeCategory, setActiveCategory] = useState('全部');
     const { user, selectedStoreId } = useAuthStore();
 
@@ -33,11 +41,34 @@ export default function POSPage() {
 
     // Product Option Dialog State
     const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+    const [editingCartItem, setEditingCartItem] = useState<CartItem | null>(null);
     const [showOptionDialog, setShowOptionDialog] = useState(false);
 
     // 使用選擇的店鋪ID,如果沒有則使用第一個店鋪
     const storeId = selectedStoreId || user?.stores?.[0]?.id;
     const currentStore = user?.stores?.find((s) => s.id === storeId);
+    const storeHeldOrders = heldOrders.filter(order => order.storeId === storeId);
+
+    const handleHoldCurrentOrder = () => {
+        if (items.length === 0) {
+            toast.error('購物車目前沒有可掛起的品項');
+            return;
+        }
+        if (!currentOrderNo) {
+            toast.error('單號取得中，請稍後再試');
+            return;
+        }
+        holdCart();
+        setShowHeldOrders(false);
+        toast.success('訂單已掛起，可隨時從掛單清單取回');
+    };
+
+    const handleRestoreHeldOrder = (heldOrderId: string) => {
+        if (items.length > 0 && !window.confirm('目前購物車有商品，取回掛單將取代目前內容，確定繼續嗎？')) return;
+        restoreHeldOrder(heldOrderId);
+        setShowHeldOrders(false);
+        toast.success('掛單已取回');
+    };
 
     const roleLabels: Record<string, string> = {
         'owner': '老闆',
@@ -93,7 +124,24 @@ export default function POSPage() {
         fetchShift();
     }, [storeId]);
 
+    useEffect(() => {
+        if (!storeId || currentOrderNo !== null) return;
+        let cancelled = false;
+        const loadNextOrderNumber = async () => {
+            try {
+                const nextNumber = await orderApi.getNextNumber(storeId);
+                if (!cancelled) initializeOrderNumbers(storeId, nextNumber);
+            } catch (error) {
+                console.error('Failed to get next order number:', error);
+                if (!cancelled) toast.error('目前單號取得失敗，結帳時將由系統自動編號');
+            }
+        };
+        loadNextOrderNumber();
+        return () => { cancelled = true; };
+    }, [storeId, currentOrderNo, heldOrders, initializeOrderNumbers]);
+
     const handleProductClick = (product: Product) => {
+        setEditingCartItem(null);
         if (product.attributes && product.attributes.length > 0) {
             setSelectedProduct(product);
             setShowOptionDialog(true);
@@ -107,16 +155,55 @@ export default function POSPage() {
         }
     };
 
-    const handleOptionConfirm = (options: CartItemOption[], quantity: number) => {
+    const handleOptionConfirm = (options: CartItemOption[], quantity: number, note: string) => {
         if (selectedProduct) {
+            if (editingCartItem) {
+                updateCartItem(editingCartItem.cartItemId, quantity, options, note, selectedProduct.price);
+                toast.success('購物車品項已更新');
+                setEditingCartItem(null);
+                return;
+            }
             addToCart({
                 id: selectedProduct.id,
                 name: selectedProduct.name,
                 price: selectedProduct.price,
                 image_url: selectedProduct.image_url
-            }, quantity, options);
+            }, quantity, options, note);
         }
     };
+
+    const handleCartItemClick = (item: CartItem) => {
+        const product = products.find(product => product.id === item.productId);
+        if (!product) {
+            toast.error('找不到此商品設定，請刪除後重新加入');
+            return;
+        }
+        setSelectedProduct(product);
+        setEditingCartItem(item);
+        setShowOptionDialog(true);
+    };
+
+    const closeOptionDialog = () => {
+        setShowOptionDialog(false);
+        setEditingCartItem(null);
+    };
+
+    const handleCashManagementClick = async () => {
+        if (!currentShiftId) {
+            toast.error('請先開班才能使用錢箱功能');
+            return;
+        }
+        if (storeId) {
+            try {
+                await hardwareApi.openDrawer(storeId);
+            } catch (error) {
+                console.error('Cash drawer command failed:', error);
+                toast.error('錢箱開啟失敗，請檢查出單機連線');
+            }
+        }
+        setShowCashDialog(true);
+    };
+
 
     const categories = Array.from(new Set(['全部', ...products.map((p: Product) => p.category || '未分類')]));
 
@@ -239,13 +326,18 @@ export default function POSPage() {
             {/* Cart Sidebar (Right) */}
             <div className="w-[350px] lg:w-[400px] flex flex-col bg-white shadow-xl z-40">
                 <div className="h-16 border-b border-slate-200 flex items-center px-6 justify-between shrink-0">
-                    <h2 className="font-bold text-lg text-slate-900">購物車</h2>
+                    <div>
+                        <h2 className="font-bold text-lg leading-tight text-slate-900">購物車</h2>
+                        <div className="mt-0.5 text-xs font-bold text-[#8A701E]">
+                            目前單號 #{currentOrderNo ?? '取得中'}
+                        </div>
+                    </div>
                     <div className="flex items-center gap-2">
                         <Button
                             variant="ghost"
                             size="icon"
                             className="text-slate-500 hover:text-slate-900"
-                            onClick={() => setShowCashDialog(true)}
+                            onClick={handleCashManagementClick}
                             title="錢箱管理 (補錢/取款)"
                         >
                             <span className="sr-only">錢箱管理</span>
@@ -265,7 +357,12 @@ export default function POSPage() {
                     ) : (
                         <div className="space-y-3">
                             {items.map((item) => (
-                                <div key={item.cartItemId} className="flex gap-3 p-3 bg-slate-50 rounded-lg border border-slate-100 items-center">
+                                <div
+                                    key={item.cartItemId}
+                                    className="flex gap-3 p-3 bg-slate-50 rounded-lg border border-slate-100 items-center cursor-pointer hover:border-[#D4AF37]/60 hover:bg-amber-50/30 transition-colors"
+                                    onClick={() => handleCartItemClick(item)}
+                                    title="點擊調整品項內容"
+                                >
                                     <div className="w-12 h-12 bg-white rounded-md border border-slate-200 overflow-hidden flex-shrink-0 flex items-center justify-center text-slate-300">
                                         {item.image_url ? (
                                             <img src={getFullImageUrl(item.image_url)} alt={item.name} className="w-full h-full object-cover" />
@@ -286,20 +383,23 @@ export default function POSPage() {
                                                         ))}
                                                     </div>
                                                 )}
+                                                {item.note && (
+                                                    <div className="text-[10px] text-amber-700 mt-1">客製：{item.note}</div>
+                                                )}
                                             </div>
                                             <span className="font-mono font-medium">${item.price * item.quantity}</span>
                                         </div>
                                         <div className="flex items-center gap-3 mt-2">
                                             <div className="flex items-center gap-1 bg-white rounded-md border border-slate-200 p-0.5">
-                                                <Button variant="ghost" size="icon" className="h-6 w-6 rounded-sm" onClick={() => updateQuantity(item.cartItemId, item.quantity - 1)}>
+                                                <Button variant="ghost" size="icon" className="h-6 w-6 rounded-sm" onClick={(event) => { event.stopPropagation(); updateQuantity(item.cartItemId, item.quantity - 1); }}>
                                                     <Minus className="h-3 w-3" />
                                                 </Button>
                                                 <span className="w-6 text-center text-sm font-mono">{item.quantity}</span>
-                                                <Button variant="ghost" size="icon" className="h-6 w-6 rounded-sm" onClick={() => updateQuantity(item.cartItemId, item.quantity + 1)}>
+                                                <Button variant="ghost" size="icon" className="h-6 w-6 rounded-sm" onClick={(event) => { event.stopPropagation(); updateQuantity(item.cartItemId, item.quantity + 1); }}>
                                                     <Plus className="h-3 w-3" />
                                                 </Button>
                                             </div>
-                                            <Button variant="ghost" size="icon" className="h-6 w-6 text-red-500 hover:text-red-600 hover:bg-red-50 ml-auto" onClick={() => removeFromCart(item.cartItemId)}>
+                                            <Button variant="ghost" size="icon" className="h-6 w-6 text-red-500 hover:text-red-600 hover:bg-red-50 ml-auto" onClick={(event) => { event.stopPropagation(); removeFromCart(item.cartItemId); }}>
                                                 <Trash2 className="h-4 w-4" />
                                             </Button>
                                         </div>
@@ -320,8 +420,13 @@ export default function POSPage() {
                     </div>
 
                     <div className="grid grid-cols-4 gap-2">
-                        <Button variant="outline" className="h-14 flex-col gap-1 border-slate-300 text-slate-600 hover:text-slate-900">
+                        <Button
+                            variant="outline"
+                            className="h-14 flex-col gap-0.5 border-slate-300 text-slate-600 hover:text-slate-900"
+                            onClick={() => setShowHeldOrders(true)}
+                        >
                             <span>掛單</span>
+                            {storeHeldOrders.length > 0 && <span className="text-[10px] text-[#A38322]">{storeHeldOrders.length} 筆</span>}
                         </Button>
 
                         <Button
@@ -336,11 +441,73 @@ export default function POSPage() {
             </div>
 
             <CheckoutModal open={showCheckout} onClose={() => setShowCheckout(false)} />
+            <Dialog open={showHeldOrders} onOpenChange={setShowHeldOrders}>
+                <DialogContent className="sm:max-w-lg">
+                    <DialogHeader>
+                        <DialogTitle>掛單管理</DialogTitle>
+                        <DialogDescription>掛起目前訂單，或取回先前尚未結帳的購物車。</DialogDescription>
+                    </DialogHeader>
+
+                    <div className="max-h-[420px] overflow-y-auto space-y-3 py-2">
+                        {storeHeldOrders.length === 0 ? (
+                            <div className="py-10 text-center text-slate-400">
+                                <Clock3 className="w-10 h-10 mx-auto mb-2 opacity-30" />
+                                目前沒有掛單
+                            </div>
+                        ) : storeHeldOrders.map(order => (
+                            <div key={order.id} className="rounded-xl border border-slate-200 p-4 bg-slate-50">
+                                <div className="flex items-start justify-between gap-4">
+                                    <div className="min-w-0">
+                                        <div className="font-bold text-slate-900">
+                                            <span className="mr-2 text-[#8A701E]">單號 #{order.orderNo ?? '—'}</span>
+                                            {new Date(order.createdAt).toLocaleString('zh-TW', { hour12: false })}
+                                        </div>
+                                        <div className="text-xs text-slate-500 mt-1 truncate">
+                                            {order.items.map(item => `${item.name}×${item.quantity}`).join('、')}
+                                        </div>
+                                        <div className="text-sm font-bold text-[#A38322] mt-2">${order.total}</div>
+                                    </div>
+                                    <div className="flex gap-1 shrink-0">
+                                        <Button size="sm" onClick={() => handleRestoreHeldOrder(order.id)}>
+                                            <RotateCcw className="w-3.5 h-3.5 mr-1" />取回
+                                        </Button>
+                                        <Button
+                                            size="sm"
+                                            variant="ghost"
+                                            className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                                            onClick={() => {
+                                                if (window.confirm('確定刪除此筆掛單嗎？')) deleteHeldOrder(order.id);
+                                            }}
+                                        >
+                                            <Trash2 className="w-4 h-4" />
+                                        </Button>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setShowHeldOrders(false)}>關閉</Button>
+                        <Button
+                            onClick={handleHoldCurrentOrder}
+                            disabled={items.length === 0}
+                            className="bg-[#D4AF37] hover:bg-[#C5A028] text-white"
+                        >
+                            掛起目前訂單（{items.length} 項）
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
             <ProductOptionDialog
                 open={showOptionDialog}
-                onClose={() => setShowOptionDialog(false)}
+                onClose={closeOptionDialog}
                 product={selectedProduct}
                 onConfirm={handleOptionConfirm}
+                initialOptions={editingCartItem?.selectedOptions}
+                initialQuantity={editingCartItem?.quantity}
+                initialNote={editingCartItem?.note}
+                editing={!!editingCartItem}
             />
             <CashManagementDialog
                 open={showCashDialog}

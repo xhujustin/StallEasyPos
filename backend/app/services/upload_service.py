@@ -42,6 +42,19 @@ class UploadService:
         return f"/static/products/{store_id}/{file_name}"
 
     @staticmethod
+    async def save_store_logo(store_id: int, upload_file: UploadFile, old_url: str = None) -> str:
+        allowed = {".png", ".jpg", ".jpeg", ".webp"}
+        file_ext = os.path.splitext(upload_file.filename or "")[1].lower()
+        if file_ext not in allowed:
+            raise ValueError("Logo 僅支援 PNG、JPG 或 WEBP")
+        if old_url:
+            await UploadService.delete_file_by_url(old_url)
+        file_name = f"{uuid.uuid4()}{file_ext}"
+        relative_path = f"uploads/logos/{store_id}/{file_name}"
+        await UploadService.save_upload_file(upload_file, os.path.join(os.getcwd(), relative_path))
+        return f"/static/logos/{store_id}/{file_name}"
+
+    @staticmethod
     async def delete_file_by_url(url: str):
         """
         根據 URL 刪除對應的實體檔案 (支援包含 Host 的全路徑)

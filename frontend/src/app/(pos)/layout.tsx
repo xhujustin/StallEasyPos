@@ -15,6 +15,7 @@ import { shiftApi } from '@/lib/api/shifts';
 import { CashManagementDialog } from '@/components/pos/CashManagementDialog';
 import { Coins } from 'lucide-react';
 import { toast } from 'sonner';
+import { hardwareApi } from '@/lib/api/hardware';
 
 export default function POSLayout({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();
@@ -68,10 +69,18 @@ export default function POSLayout({ children }: { children: React.ReactNode }) {
         navItems.push({ href: '/admin/dashboard', icon: LayoutDashboard, label: '管理店鋪' });
     }
 
-    const handleCashDrawerClick = () => {
+    const handleCashDrawerClick = async () => {
         if (!currentShiftId) {
             toast.error("請先開班才能使用錢箱功能");
             return;
+        }
+        if (selectedStoreId) {
+            try {
+                await hardwareApi.openDrawer(selectedStoreId);
+            } catch (error) {
+                console.error('Cash drawer command failed:', error);
+                toast.error('錢箱開啟失敗，請檢查出單機連線');
+            }
         }
         setShowCashDialog(true);
     };

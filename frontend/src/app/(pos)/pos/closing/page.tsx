@@ -11,6 +11,9 @@ import { Label } from '@/components/ui/label';
 import { Coins, Receipt, DollarSign, AlertCircle, Calculator, Equal, Delete } from 'lucide-react';
 import { ManagerPinDialog } from '@/components/pos/manager-pin-dialog';
 import React from 'react';
+import { hardwareApi } from '@/lib/api/hardware';
+import { orderApi, Order } from '@/lib/api/orders';
+import { toast } from 'sonner';
 
 // Helper to get user role from auth store or cookie
 function getUserRole(user: any): string {
@@ -45,6 +48,7 @@ export default function ClosingPage() {
     const [showManagerPin, setShowManagerPin] = useState(false);
     const [isAuthorized, setIsAuthorized] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [drawerLoading, setDrawerLoading] = useState(false);
 
     const userRole = getUserRole(user);
 
@@ -107,6 +111,20 @@ export default function ClosingPage() {
         setError(null);
     };
 
+    const handleOpenDrawer = async () => {
+        if (!selectedStoreId) return;
+        try {
+            setDrawerLoading(true);
+            await hardwareApi.openDrawer(selectedStoreId);
+            toast.success('開錢箱指令已送出');
+        } catch (error) {
+            console.error('Cash drawer command failed:', error);
+            toast.error('錢箱開啟失敗，請檢查出單機連線');
+        } finally {
+            setDrawerLoading(false);
+        }
+    };
+
     const handleCalculate = (): string | null => {
         try {
             if (!/^[0-9+\-*/.\s]+$/.test(displayValue)) return displayValue;
@@ -129,6 +147,51 @@ export default function ClosingPage() {
         Number(stats.cash_removed || 0)
     );
 
+    const buildShiftPrintPayload = (closedShift: Shift, orders: Order[], actual: number, expected: number) => {
+        const validOrders = orders.filter(order =>
+            !order.is_voided && (order.status === 'paid' || order.status === 'completed')
+        );
+        const productSalesMap = new Map<string, { quantity: number; amount: number }>();
+        validOrders.forEach(order => {
+            order.items.forEach(item => {
+                const current = productSalesMap.get(item.name_snapshot) || { quantity: 0, amount: 0 };
+                current.quantity += Number(item.quantity || 0);
+                current.amount += Number(item.price_snapshot || 0) * Number(item.quantity || 0);
+                productSalesMap.set(item.name_snapshot, current);
+            });
+        });
+
+        return {
+            report_type: 'shift',
+            shift_id: closedShift.id,
+            start_time: new Date(closedShift.start_time).toLocaleString('zh-TW', { hour12: false }),
+            end_time: new Date(closedShift.end_time || new Date()).toLocaleString('zh-TW', { hour12: false }),
+            opened_by: closedShift.opened_by?.username || '',
+            closed_by: closedShift.closed_by?.username || user?.username || '',
+            order_count: validOrders.length,
+            void_count: orders.filter(order => order.is_voided || order.status === 'cancelled').length,
+            total_sales: Number(closedShift.total_sales || 0),
+            cash_sales: Number(closedShift.cash_sales || 0),
+            non_cash_sales: Number(closedShift.total_sales || 0) - Number(closedShift.cash_sales || 0),
+            total_cost: Number(closedShift.total_sales || 0) - Number(closedShift.total_net_profit || 0),
+            total_net_profit: Number(closedShift.total_net_profit || 0),
+            initial_cash: Number(closedShift.initial_cash || 0),
+            cash_added: Number(closedShift.cash_added || 0),
+            cash_removed: Number(closedShift.cash_removed || 0),
+            expected_cash: expected,
+            final_cash: actual,
+            shortage: actual - expected,
+            product_sales: Array.from(productSalesMap.entries())
+                .map(([name, sales]) => ({ name, ...sales }))
+                .sort((a, b) => b.amount - a.amount),
+        };
+    };
+
+    const printShiftReport = async (payload: Record<string, unknown>) => {
+        if (!selectedStoreId) return;
+        await hardwareApi.printShiftReport(selectedStoreId, payload);
+    };
+
     const handleClosing = async () => {
         if (userRole === 'staff' && !isAuthorized) {
             setShowManagerPin(true);
@@ -148,7 +211,9 @@ export default function ClosingPage() {
         setLoading(true);
         try {
             const diff = actual - expectedCash;
-            await shiftApi.close(shift.id, { final_cash: actual });
+            const closedShift = await shiftApi.close(shift.id, { final_cash: actual });
+            const ordersResponse = await orderApi.list(selectedStoreId!, { shift_id: shift.id });
+            const printPayload = buildShiftPrintPayload(closedShift, ordersResponse.data, actual, expectedCash);
             window.dispatchEvent(new Event('shift-data-changed'));
 
             setReport({
@@ -156,7 +221,15 @@ export default function ClosingPage() {
                 actual: actual,
                 excess: diff,
                 timestamp: new Date().toLocaleString(),
+                printPayload,
             });
+            try {
+                await printShiftReport(printPayload);
+                toast.success('本班明細已送至出單機');
+            } catch (printError) {
+                console.error('Shift report print failed:', printError);
+                toast.error('班結已完成，但明細列印失敗，請檢查出單機連線後重新列印');
+            }
         } catch (error) {
             console.error("Failed to close shift:", error);
             alert("結帳失敗，請重試");
@@ -211,7 +284,18 @@ export default function ClosingPage() {
 
                         <div className="grid grid-cols-2 gap-4 pt-4">
                             <Button variant="outline" className="h-12 text-lg" onClick={() => router.replace('/pos/opening')}>返回開班</Button>
-                            <Button className="h-12 text-lg bg-[#D4AF37] hover:bg-[#C5A028] text-white" onClick={() => alert("Z-Report Printed!")}>列印 Z-Report</Button>
+                            <Button
+                                className="h-12 text-lg bg-[#D4AF37] hover:bg-[#C5A028] text-white"
+                                onClick={async () => {
+                                    try {
+                                        await printShiftReport(report.printPayload);
+                                        toast.success('本班明細已送至出單機');
+                                    } catch (printError) {
+                                        console.error('Shift report reprint failed:', printError);
+                                        toast.error('列印失敗，請檢查出單機連線');
+                                    }
+                                }}
+                            >重新列印本班明細</Button>
                         </div>
                     </div>
                 </Card>
@@ -324,13 +408,24 @@ export default function ClosingPage() {
                         <Button variant="outline" className="h-full text-2xl font-black bg-white rounded-xl shadow-sm hover:bg-blue-50" onClick={() => handleInput('.')}>.</Button>
                     </div>
 
-                    <Button
-                        onClick={handleClosing}
-                        disabled={loading || !displayValue}
-                        className="w-full h-16 text-xl font-bold bg-[#D4AF37] hover:bg-[#C5A028] text-white shadow-lg rounded-2xl transition-all active:scale-[0.98] disabled:opacity-50"
-                    >
-                        {loading ? '處理中...' : (userRole === 'staff' && !isAuthorized ? '授權結帳' : '確認結帳 (Close Shift)')}
-                    </Button>
+                    <div className="grid grid-cols-3 gap-3">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            onClick={handleOpenDrawer}
+                            disabled={drawerLoading}
+                            className="h-16 text-base font-bold border-2 border-slate-300 bg-white rounded-2xl"
+                        >
+                            <Coins className="mr-2 h-5 w-5" /> {drawerLoading ? '開啟中…' : '開啟錢箱'}
+                        </Button>
+                        <Button
+                            onClick={handleClosing}
+                            disabled={loading || !displayValue}
+                            className="col-span-2 h-16 text-xl font-bold bg-[#D4AF37] hover:bg-[#C5A028] text-white shadow-lg rounded-2xl transition-all active:scale-[0.98] disabled:opacity-50"
+                        >
+                            {loading ? '處理中...' : (userRole === 'staff' && !isAuthorized ? '授權結帳' : '確認結帳 (Close Shift)')}
+                        </Button>
+                    </div>
                 </div>
             </Card>
 

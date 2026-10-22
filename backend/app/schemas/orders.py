@@ -20,6 +20,7 @@ class OrderItemCreate(BaseModel):
 
 class OrderCreate(BaseModel):
     idempotency_key: str
+    order_no: Optional[int] = None
     items: List[OrderItemCreate]
     total_amount: float # Client calculated total, backend should verify or re-calc
     subtotal: float = 0
@@ -38,6 +39,7 @@ class OrderItemOut(BaseModel):
     product_id: Optional[int]
     name_snapshot: str
     price_snapshot: float
+    cost_snapshot: Optional[float] = None
     quantity: float
     note: Optional[str]
     options: Optional[List[dict]] = None
@@ -46,6 +48,8 @@ class OrderItemOut(BaseModel):
 
 class OrderOut(BaseModel):
     id: int
+    store_id: int
+    shift_id: Optional[int] = None
     order_no: int
     status: OrderStatus
     order_type: OrderType
@@ -58,6 +62,9 @@ class OrderOut(BaseModel):
     idempotency_key: str
     business_date: date
     created_at: datetime
+    is_voided: bool = False
+    voided_at: Optional[datetime] = None
+    void_reason: Optional[str] = None
     
     cash_received: Optional[float] = None
     change_amount: Optional[float] = None

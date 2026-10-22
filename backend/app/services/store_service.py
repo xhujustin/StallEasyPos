@@ -1,11 +1,11 @@
-from typing import List, Optional
+from typing import List
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException
 
 from app.models.store import Store
 from app.models.user import StoreUser, UserRole, User
-from app.schemas.stores import StoreCreate
+from app.schemas.stores import StoreCreate, StoreUpdate
 
 class StoreService:
     """
@@ -20,8 +20,11 @@ class StoreService:
         - 自動將 Owner 加入 store_users (Role=OWNER)
         """
         # 1. Create Store
+        name = store_in.name.strip()
+        if not name:
+            raise HTTPException(status_code=422, detail="店鋪名稱不可空白")
         store = Store(
-            name=store_in.name,
+            name=name,
             owner_id=owner_id
         )
         db.add(store)
@@ -104,14 +107,20 @@ class StoreService:
         return store
 
     @staticmethod
-    async def update_store(db: AsyncSession, store_id: int, store_in: StoreCreate) -> Optional[Store]:
+    async def update_store(
+        db: AsyncSession,
+        store_id: int,
+        store_in: StoreUpdate,
+        current_user_id: int,
+    ) -> Store:
         """更新店鋪基本資訊"""
-        store = await db.get(Store, store_id)
-        if not store:
-            return None
+        store = await StoreService.get_store_if_authorized(db, store_id, current_user_id)
         
         if store_in.name is not None:
-            store.name = store_in.name
+            name = store_in.name.strip()
+            if not name:
+                raise HTTPException(status_code=422, detail="店鋪名稱不可空白")
+            store.name = name
             
         await db.commit()
         await db.refresh(store)

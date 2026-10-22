@@ -8,14 +8,27 @@ from sqlalchemy.orm import selectinload
 
 from app.models.order import Order, OrderItem, OrderStatus
 from app.models.product import Product
+from app.models.product_material import ProductMaterial
 from app.schemas.orders import OrderCreate
 from app.services.store_service import StoreService
 
-from app.models.product_attribute import ProductAttributeOption
+from app.models.product_attribute import ProductAttributeOption, OptionMaterial
 from app.services.material_service import MaterialService
 from app.services.shift_service import ShiftService
 
 class OrderService:
+    @staticmethod
+    async def get_next_order_no(db: AsyncSession, store_id: int, user_id: int) -> int:
+        """取得店鋪今日下一個可用單號。"""
+        await StoreService.get_store_if_authorized(db, store_id, user_id)
+        result = await db.execute(
+            select(func.max(Order.order_no))
+            .where(Order.store_id == store_id)
+            .where(Order.business_date == date.today())
+            .where(Order.order_no < 10_000_000)
+        )
+        return (result.scalar() or 0) + 1
+
     @staticmethod
     async def create_order(
         db: AsyncSession, store_id: int, order_in: OrderCreate, user_id: int
@@ -61,6 +74,19 @@ class OrderService:
         max_no = res.scalar() or 0
         new_order_no = max_no + 1
 
+        # POS 可先顯示並隨掛單保存預定單號。若該號已被其他設備使用，
+        # 則回退到資料庫目前的下一號，避免唯一鍵衝突。
+        requested_order_no = order_in.order_no
+        if requested_order_no and 0 < requested_order_no < 10_000_000:
+            requested_result = await db.execute(
+                select(Order.id)
+                .where(Order.store_id == store_id)
+                .where(Order.business_date == date.today())
+                .where(Order.order_no == requested_order_no)
+            )
+            if requested_result.scalar_one_or_none() is None:
+                new_order_no = requested_order_no
+
         # 4. Prepare Order Items with Snapshot
         order_items = []
         calculated_total = 0.0
@@ -69,12 +95,26 @@ class OrderService:
             # Fetch product for snapshot
             product = None
             if item_in.product_id:
-                product = await db.get(Product, item_in.product_id)
+                product_result = await db.execute(
+                    select(Product)
+                    .where(Product.id == item_in.product_id)
+                    .options(
+                        selectinload(Product.materials).selectinload(ProductMaterial.material)
+                    )
+                )
+                product = product_result.scalars().first()
             
             if product:
                 name_snapshot = product.name
                 price_snapshot = float(product.price)
-                cost_snapshot = float(product.cost) if product.cost else 0
+                if product.cost is not None:
+                    cost_snapshot = float(product.cost)
+                else:
+                    cost_snapshot = sum(
+                        float(product_material.quantity) * float(product_material.material.unit_cost)
+                        for product_material in product.materials
+                        if product_material.material is not None
+                    )
             else:
                 # Handle custom item or deleted product logic (Simplified: Error if not found)
                 raise HTTPException(status_code=400, detail=f"Product {item_in.product_id} not found")
@@ -97,12 +137,17 @@ class OrderService:
                     opt_result = await db.execute(
                         select(ProductAttributeOption)
                         .where(ProductAttributeOption.id == opt_in.option_id)
-                        .options(selectinload(ProductAttributeOption.materials))
+                        .options(
+                            selectinload(ProductAttributeOption.materials)
+                            .selectinload(OptionMaterial.material)
+                        )
                     )
                     db_option = opt_result.scalars().first()
 
                     if db_option and db_option.materials:
                         for opt_mat in db_option.materials:
+                            if opt_mat.material is not None:
+                                cost_snapshot += float(opt_mat.quantity) * float(opt_mat.material.unit_cost)
                             # 扣除數量 = 訂單數量 * 耗材設定數量
                             # 例如: 2 杯珍奶 * 每杯 50g 珍珠 = 扣除 100g
                             # 注意: opt_mat.quantity 是 Decimal, item_in.quantity 是 int/float, 需轉換

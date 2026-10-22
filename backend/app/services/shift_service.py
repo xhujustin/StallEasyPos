@@ -9,6 +9,40 @@ from fastapi import HTTPException
 
 from app.models.shift import Shift, ShiftStatus, ShiftTransaction
 from app.models.order import Order, OrderItem, OrderStatus, PaymentMethod
+from app.models.product import Product
+from app.models.product_material import ProductMaterial
+from app.models.material import Material
+
+
+def order_cost_query(shift: Shift, end_time: datetime):
+    """Build COGS query, falling back to the current recipe for legacy zero snapshots."""
+    recipe_costs = (
+        select(
+            ProductMaterial.product_id.label("product_id"),
+            func.sum(ProductMaterial.quantity * Material.unit_cost).label("recipe_cost"),
+        )
+        .join(Material, Material.id == ProductMaterial.material_id)
+        .group_by(ProductMaterial.product_id)
+        .subquery()
+    )
+    unit_cost = func.coalesce(
+        func.nullif(OrderItem.cost_snapshot, 0),
+        Product.cost,
+        recipe_costs.c.recipe_cost,
+        0,
+    )
+    return (
+        select(func.coalesce(func.sum(unit_cost * OrderItem.quantity), 0).label("cost"))
+        .join(Order, OrderItem.order_id == Order.id)
+        .outerjoin(Product, Product.id == OrderItem.product_id)
+        .outerjoin(recipe_costs, recipe_costs.c.product_id == OrderItem.product_id)
+        .where(
+            Order.store_id == shift.store_id,
+            Order.created_at >= shift.start_time,
+            Order.created_at <= end_time,
+            Order.status.in_([OrderStatus.PAID, OrderStatus.COMPLETED]),
+        )
+    )
 
 class ShiftService:
     @staticmethod
@@ -80,14 +114,7 @@ class ShiftService:
         stats = result.first()
         
         # 2. 成本統計 (從 OrderItem 計算)
-        cost_query = select(
-            func.coalesce(func.sum(func.coalesce(OrderItem.cost_snapshot, 0) * OrderItem.quantity), 0).label("cost")
-        ).join(Order, OrderItem.order_id == Order.id).where(
-            Order.store_id == shift.store_id,
-            Order.created_at >= shift.start_time,
-            Order.created_at <= end_time,
-            Order.status.in_([OrderStatus.PAID, OrderStatus.COMPLETED])
-        )
+        cost_query = order_cost_query(shift, end_time)
 
         cost_res = await db.execute(cost_query)
         total_cost = cost_res.scalar() or 0
@@ -240,14 +267,7 @@ class ShiftService:
         stats = result.first()
         
         # 2. 成本統計 (從 OrderItem 計算)
-        cost_query = select(
-            func.coalesce(func.sum(func.coalesce(OrderItem.cost_snapshot, 0) * OrderItem.quantity), 0).label("cost")
-        ).join(Order, OrderItem.order_id == Order.id).where(
-            Order.store_id == shift.store_id,
-            Order.created_at >= shift.start_time,
-            Order.created_at <= end_time,
-            Order.status.in_([OrderStatus.PAID, OrderStatus.COMPLETED])
-        )
+        cost_query = order_cost_query(shift, end_time)
 
         cost_res = await db.execute(cost_query)
         total_cost = cost_res.scalar() or 0

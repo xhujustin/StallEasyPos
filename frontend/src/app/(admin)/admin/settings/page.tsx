@@ -23,18 +23,20 @@ import {
     Coins,
     Calculator,
     ShoppingCart,
-    Printer,
     Plus,
     Trash2,
     CreditCard,
     Wallet,
     Tags,
+    Upload,
+    ImageIcon,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { cn } from '@/lib/utils';
+import { cn, getFullImageUrl } from '@/lib/utils';
 import { userApi } from '@/lib/api/users';
+import { storeApi } from '@/lib/api/stores';
 
 // 簡易 Debounce Hook
 function useDebounce<T>(value: T, delay: number): T {
@@ -48,16 +50,19 @@ function useDebounce<T>(value: T, delay: number): T {
 
 export default function AdminSettingsPage() {
     const router = useRouter();
-    const { user, selectedStoreId, updateUser } = useAuthStore();
+    const { user, selectedStoreId, updateUser, updateStore } = useAuthStore();
     const [mounted, setMounted] = useState(false);
     const [loading, setLoading] = useState(true);
     const [syncing, setSyncing] = useState(false);
     const [lastSynced, setLastSynced] = useState<Date | null>(null);
+    const [uploadingLogo, setUploadingLogo] = useState(false);
+    const [syncError, setSyncError] = useState('');
 
     // 設定狀態
     const [settings, setSettings] = useState({
         store_account: '',
         store_name: '',
+        logo_url: '',
         receipt_header: '',
         receipt_footer: '',
         business_id: '',
@@ -65,13 +70,12 @@ export default function AdminSettingsPage() {
         tax_mode: 'inclusive',
         timezone: 'Asia/Taipei',
         language: 'zh-TW',
-        receipt_width: '80mm',
         // 財務經營參數
         monthly_fixed_costs: [] as { id: string, name: string, amount: number }[],
+        business_days: [1, 2, 3, 4, 5, 6, 0] as number[],
         rounding_rule: 'round',
         default_service_fee_rate: 0,
         // POS 營運自動化
-        auto_print_after_checkout: false,
         default_order_type: 'take_out',
         // 營運進階設定
         enabled_payment_methods: ['cash'] as string[],
@@ -114,7 +118,7 @@ export default function AdminSettingsPage() {
         }
 
         loadAllData();
-    }, [mounted]);
+    }, [mounted, selectedStoreId]);
 
     const loadAllData = async () => {
         if (!selectedStoreId) return;
@@ -126,16 +130,18 @@ export default function AdminSettingsPage() {
             ]);
             setSettings({
                 ...settingsData,
-                receipt_width: settingsData.receipt_width || '80mm',
                 monthly_fixed_costs: settingsData.monthly_fixed_costs || [],
+                business_days: settingsData.business_days || [1, 2, 3, 4, 5, 6, 0],
                 rounding_rule: settingsData.rounding_rule || 'round',
                 default_service_fee_rate: settingsData.default_service_fee_rate || 0,
-                auto_print_after_checkout: settingsData.auto_print_after_checkout ?? false,
                 default_order_type: settingsData.default_order_type || 'take_out',
                 enabled_payment_methods: settingsData.enabled_payment_methods || ['cash'],
                 discount_presets: settingsData.discount_presets || [],
             });
             if (userData.data) {
+                if (userData.data.stores) {
+                    updateUser({ stores: userData.data.stores });
+                }
                 setProfile({
                     username: userData.data.username || '',
                     full_name: userData.data.full_name || '',
@@ -161,14 +167,23 @@ export default function AdminSettingsPage() {
 
         const syncSettings = async () => {
             setSyncing(true);
+            setSyncError('');
             try {
-                await settingsApi.updateBatch(selectedStoreId, {
-                    scope: SettingScope.STORE,
-                    settings: debouncedSettings
-                });
+                const storeName = debouncedSettings.store_name.trim();
+                if (!storeName) throw new Error('店鋪名稱不可空白');
+                const { store_name: _storeName, ...storeSettings } = debouncedSettings;
+                await Promise.all([
+                    settingsApi.updateBatch(selectedStoreId, {
+                        scope: SettingScope.STORE,
+                        settings: storeSettings
+                    }),
+                    storeApi.update(selectedStoreId, { name: storeName })
+                ]);
+                updateStore(selectedStoreId, { name: storeName });
                 setLastSynced(new Date());
-            } catch (error) {
+            } catch (error: any) {
                 console.error('店鋪設定同步失敗:', error);
+                setSyncError(error.response?.data?.detail || error.message || '設定同步失敗');
             } finally {
                 setSyncing(false);
             }
@@ -223,6 +238,21 @@ export default function AdminSettingsPage() {
         });
     };
 
+    const handleLogoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (!file || !selectedStoreId) return;
+        try {
+            setUploadingLogo(true);
+            const logoUrl = await settingsApi.uploadLogo(selectedStoreId, file, settings.logo_url);
+            setSettings(prev => ({ ...prev, logo_url: logoUrl }));
+        } catch (error: any) {
+            alert(error.response?.data?.detail || 'Logo 上傳失敗');
+        } finally {
+            setUploadingLogo(false);
+            event.target.value = '';
+        }
+    };
+
     const handleRemoveFixedCost = (id: string) => {
         setSettings({
             ...settings,
@@ -236,6 +266,20 @@ export default function AdminSettingsPage() {
             monthly_fixed_costs: settings.monthly_fixed_costs.map(item =>
                 item.id === id ? { ...item, [field]: value } : item
             )
+        });
+    };
+
+    const toggleBusinessDay = (day: number) => {
+        const selected = settings.business_days.includes(day);
+        if (selected && settings.business_days.length === 1) {
+            setSyncError('每週至少要保留一個營業日');
+            return;
+        }
+        setSettings({
+            ...settings,
+            business_days: selected
+                ? settings.business_days.filter((value) => value !== day)
+                : [...settings.business_days, day]
         });
     };
 
@@ -293,6 +337,19 @@ export default function AdminSettingsPage() {
         }
     }, [lastSynced]);
 
+    const monthlyFixedCostTotal = settings.monthly_fixed_costs.reduce(
+        (total, item) => total + Number(item.amount || 0),
+        0
+    );
+    const now = new Date();
+    const currentMonthOperatingDays = Array.from(
+        { length: new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate() },
+        (_, index) => new Date(now.getFullYear(), now.getMonth(), index + 1).getDay()
+    ).filter((day) => settings.business_days.includes(day)).length;
+    const averageFixedCostPerOperatingDay = currentMonthOperatingDays > 0
+        ? monthlyFixedCostTotal / currentMonthOperatingDays
+        : 0;
+
     if (!mounted || loading) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[60vh]">
@@ -314,6 +371,12 @@ export default function AdminSettingsPage() {
                 </div>
 
                 <div className="flex items-center gap-3">
+                    {syncError && (
+                        <div className="flex items-center gap-2 rounded-xl border border-red-100 bg-red-50 px-4 py-2 text-red-600">
+                            <AlertCircle size={16} />
+                            <span className="text-xs font-bold">{syncError}</span>
+                        </div>
+                    )}
                     <div className={cn(
                         "flex items-center gap-2 px-4 py-2 rounded-xl border transition-all duration-300",
                         syncing
@@ -488,6 +551,27 @@ export default function AdminSettingsPage() {
                                 </div>
                             </div>
 
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">收據與號碼牌 Logo</label>
+                                <div className="flex items-center gap-4 rounded-xl border border-gray-200 bg-gray-50 p-4">
+                                    <div className="h-20 w-28 shrink-0 overflow-hidden rounded-lg border border-gray-200 bg-white flex items-center justify-center">
+                                        {settings.logo_url ? (
+                                            <img src={getFullImageUrl(settings.logo_url)} alt="店鋪 Logo" className="max-h-full max-w-full object-contain" />
+                                        ) : (
+                                            <ImageIcon className="h-8 w-8 text-gray-300" />
+                                        )}
+                                    </div>
+                                    <div className="flex-1">
+                                        <label className="inline-flex h-10 cursor-pointer items-center rounded-lg bg-slate-900 px-4 text-sm font-bold text-white hover:bg-slate-800">
+                                            <Upload className="mr-2 h-4 w-4" />
+                                            {uploadingLogo ? '上傳中…' : '選擇 Logo'}
+                                            <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" disabled={uploadingLogo} onChange={handleLogoUpload} />
+                                        </label>
+                                        <p className="mt-2 text-[10px] text-gray-400">支援 PNG、JPG、WEBP；列印時會自動轉為黑白並置中。</p>
+                                    </div>
+                                </div>
+                            </div>
+
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div className="space-y-1.5">
                                     <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">收據抬頭名稱</label>
@@ -504,20 +588,6 @@ export default function AdminSettingsPage() {
                                         onChange={(e) => setSettings({ ...settings, business_id: e.target.value })}
                                         className="h-12 bg-gray-50 border-gray-200 focus:border-[#D4AF37] font-mono"
                                     />
-                                </div>
-                                <div className="space-y-1.5">
-                                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">收據列印寬度</label>
-                                    <div className="relative">
-                                        <select
-                                            value={settings.receipt_width}
-                                            onChange={(e) => setSettings({ ...settings, receipt_width: e.target.value })}
-                                            className="w-full h-12 px-4 bg-gray-50 border border-gray-200 rounded-xl focus:border-[#D4AF37] focus:ring-4 focus:ring-[#D4AF37]/5 outline-none transition-all text-sm font-bold appearance-none"
-                                        >
-                                            <option value="80mm">80mm (標準收據)</option>
-                                            <option value="57mm">57mm (發票/窄單)</option>
-                                        </select>
-                                        <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={16} />
-                                    </div>
                                 </div>
                             </div>
 
@@ -540,7 +610,7 @@ export default function AdminSettingsPage() {
                             <h3 className="font-black text-gray-800 tracking-tight">POS 營運自動化</h3>
                         </div>
                         <div className="p-6 space-y-6">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="grid grid-cols-1 gap-6">
                                 <div className="space-y-1.5">
                                     <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">預設訂單類型</label>
                                     <div className="relative">
@@ -554,34 +624,6 @@ export default function AdminSettingsPage() {
                                             <option value="delivery">外送 (Delivery)</option>
                                         </select>
                                         <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={16} />
-                                    </div>
-                                </div>
-                                <div className="flex flex-col justify-center">
-                                    <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-100">
-                                        <div className="flex items-center gap-3">
-                                            <div className={cn(
-                                                "w-8 h-8 rounded-lg flex items-center justify-center transition-colors",
-                                                settings.auto_print_after_checkout ? "bg-green-100 text-green-600" : "bg-gray-200 text-gray-400"
-                                            )}>
-                                                <Printer size={18} />
-                                            </div>
-                                            <div className="flex flex-col">
-                                                <span className="text-xs font-black text-gray-700">結帳後自動列印</span>
-                                                <span className="text-[10px] text-gray-400">完成付款後立即觸發出單</span>
-                                            </div>
-                                        </div>
-                                        <button
-                                            onClick={() => setSettings({ ...settings, auto_print_after_checkout: !settings.auto_print_after_checkout })}
-                                            className={cn(
-                                                "w-12 h-6 rounded-full transition-all duration-300 relative",
-                                                settings.auto_print_after_checkout ? "bg-green-500" : "bg-gray-300"
-                                            )}
-                                        >
-                                            <div className={cn(
-                                                "absolute top-1 w-4 h-4 bg-white rounded-full transition-all duration-300",
-                                                settings.auto_print_after_checkout ? "left-7" : "left-1"
-                                            )} />
-                                        </button>
                                     </div>
                                 </div>
                             </div>
@@ -708,6 +750,53 @@ export default function AdminSettingsPage() {
                                         }}
                                         className="h-12 bg-gray-50 border-gray-200 focus:border-[#D4AF37] font-bold"
                                     />
+                                </div>
+                            </div>
+
+                            <hr className="border-gray-100" />
+
+                            <div className="space-y-3">
+                                <div>
+                                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">每週營業日</label>
+                                    <p className="mt-1 text-[10px] text-gray-400">用於將每月固定成本平均分攤到實際營業日。</p>
+                                </div>
+                                <div className="grid grid-cols-7 gap-2">
+                                    {[
+                                        { value: 1, label: '一' },
+                                        { value: 2, label: '二' },
+                                        { value: 3, label: '三' },
+                                        { value: 4, label: '四' },
+                                        { value: 5, label: '五' },
+                                        { value: 6, label: '六' },
+                                        { value: 0, label: '日' },
+                                    ].map((day) => {
+                                        const active = settings.business_days.includes(day.value);
+                                        return (
+                                            <button
+                                                type="button"
+                                                key={day.value}
+                                                onClick={() => toggleBusinessDay(day.value)}
+                                                className={cn(
+                                                    "h-10 rounded-xl border text-xs font-black transition-colors",
+                                                    active
+                                                        ? "border-[#D4AF37] bg-[#D4AF37] text-white"
+                                                        : "border-gray-200 bg-gray-50 text-gray-400 hover:border-[#D4AF37]"
+                                                )}
+                                            >
+                                                週{day.label}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                                <div className="grid grid-cols-2 gap-3 rounded-xl border border-blue-100 bg-blue-50/60 p-3 text-xs">
+                                    <div>
+                                        <span className="block text-[10px] text-gray-400">本月營業日</span>
+                                        <strong className="text-gray-800">{currentMonthOperatingDays} 天</strong>
+                                    </div>
+                                    <div className="text-right">
+                                        <span className="block text-[10px] text-gray-400">每日平均固定成本</span>
+                                        <strong className="text-blue-700">${Math.round(averageFixedCostPerOperatingDay).toLocaleString()}</strong>
+                                    </div>
                                 </div>
                             </div>
 

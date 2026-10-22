@@ -31,6 +31,7 @@ interface AuthState {
     // Actions
     setAuth: (token: string, user: User, mode: 'STAFF' | 'ADMIN') => void;
     updateUser: (partialUser: Partial<User>) => void;
+    updateStore: (storeId: number, partialStore: Partial<Store>) => void;
     setSelectedStore: (storeId: number) => void;  // 設定選擇的店鋪
     logout: () => void;
 }
@@ -53,6 +54,15 @@ export const useAuthStore = create<AuthState>()(
 
             updateUser: (partialUser) => set((state) => ({
                 user: state.user ? { ...state.user, ...partialUser } : null
+            })),
+
+            updateStore: (storeId, partialStore) => set((state) => ({
+                user: state.user ? {
+                    ...state.user,
+                    stores: state.user.stores.map((store) =>
+                        store.id === storeId ? { ...store, ...partialStore } : store
+                    )
+                } : null
             })),
 
             setSelectedStore: (storeId) => set({

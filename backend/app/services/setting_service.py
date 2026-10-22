@@ -61,8 +61,8 @@ class SettingService:
             )
             db.add(setting)
         
-        await db.commit()
-        await db.refresh(setting)
+        # 由批次端點統一提交，避免其中一筆失敗時產生部分更新。
+        await db.flush()
         return setting
 
     @staticmethod

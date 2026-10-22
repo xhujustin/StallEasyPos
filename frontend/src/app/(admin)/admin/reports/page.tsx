@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { shiftApi, Shift } from '@/lib/api/shifts';
 import { Button } from '@/components/ui/button';
-import { RefreshCcw, FileText, ChevronDown, ChevronRight, ArrowUpRight, ArrowDownRight, User, ChevronLeft, Calendar, Search } from 'lucide-react';
+import { RefreshCcw, FileText, ChevronDown, ChevronRight, ArrowUpRight, ArrowDownRight, User, ChevronLeft, Calendar, Search, Eye } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ReportPreviewModal } from '@/components/reports/ReportPreviewModal'; // Modal is technically unused now
 
@@ -96,6 +96,20 @@ export default function AdminReportsPage() {
             endDate: endDate
         }).toString();
         // Use router.push for client-side navigation (avoid full reload/flash)
+        router.push(`/admin/reports/print?${query}`);
+    };
+
+    const handleViewShift = (shift: Shift) => {
+        if (!selectedStoreId || !user) return;
+        const store = user.stores?.find(s => s.id === selectedStoreId);
+        const localDate = (value: string) => new Date(value).toLocaleDateString('sv-SE');
+        const query = new URLSearchParams({
+            storeId: selectedStoreId.toString(),
+            storeName: store?.name || '未知店鋪',
+            shiftId: shift.id.toString(),
+            startDate: localDate(shift.start_time),
+            endDate: localDate(shift.end_time || shift.start_time)
+        }).toString();
         router.push(`/admin/reports/print?${query}`);
     };
 
@@ -197,12 +211,13 @@ export default function AdminReportsPage() {
                                 <th className="px-4 py-3 font-semibold text-right">收支變動</th>
                                 <th className="px-4 py-3 font-semibold text-right">結餘現金</th>
                                 <th className="px-4 py-3 font-semibold text-right">短溢</th>
+                                <th className="px-4 py-3 font-semibold text-center">操作</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
                             {loading ? (
                                 <tr>
-                                    <td colSpan={10} className="px-6 py-12 text-center text-gray-500">
+                                    <td colSpan={11} className="px-6 py-12 text-center text-gray-500">
                                         <div className="flex flex-col items-center gap-2">
                                             <RefreshCcw className="h-6 w-6 animate-spin text-gray-300" />
                                             <span>載入中...</span>
@@ -211,7 +226,7 @@ export default function AdminReportsPage() {
                                 </tr>
                             ) : filteredShifts.length === 0 ? (
                                 <tr>
-                                    <td colSpan={10} className="px-6 py-12 text-center text-gray-500 italic">
+                                    <td colSpan={11} className="px-6 py-12 text-center text-gray-500 italic">
                                         尚無班次紀錄資料
                                     </td>
                                 </tr>
@@ -300,10 +315,25 @@ export default function AdminReportsPage() {
                                                         <span>{diff > 0 ? '+' : ''}{formatCurrency(diff)}</span>
                                                     ) : '-'}
                                                 </td>
+                                                <td className="px-4 py-4 text-center">
+                                                    <Button
+                                                        type="button"
+                                                        variant="outline"
+                                                        size="sm"
+                                                        className="h-8 whitespace-nowrap border-[#D4AF37]/50 text-[#8A701E] hover:bg-[#D4AF37]/10"
+                                                        onClick={(event) => {
+                                                            event.stopPropagation();
+                                                            handleViewShift(shift);
+                                                        }}
+                                                    >
+                                                        <Eye className="h-3.5 w-3.5 mr-1.5" />
+                                                        查看班次
+                                                    </Button>
+                                                </td>
                                             </tr>
                                             {isExpanded && hasTransactions && (
                                                 <tr className="bg-gray-50/40">
-                                                    <td colSpan={10} className="p-0 border-b border-gray-100">
+                                                    <td colSpan={11} className="p-0 border-b border-gray-100">
                                                         <div className="px-12 py-6 bg-white/50 border-t border-gray-100">
                                                             <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
                                                                 <RefreshCcw className="h-3 w-3" />

@@ -4,16 +4,19 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { shiftApi } from '@/lib/api/shifts';
-import { Calculator, Delete, Equal } from 'lucide-react';
+import { Calculator, Delete, Equal, Coins } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { hardwareApi } from '@/lib/api/hardware';
+import { toast } from 'sonner';
 
 export default function ShiftOpeningPage() {
     const router = useRouter();
     const { selectedStoreId } = useAuthStore();
     const [displayValue, setDisplayValue] = useState<string>('');
     const [isLoading, setIsLoading] = useState(false);
+    const [drawerLoading, setDrawerLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
     // Calculator Logic
@@ -30,6 +33,20 @@ export default function ShiftOpeningPage() {
     const handleClear = () => {
         setDisplayValue('');
         setError(null);
+    };
+
+    const handleOpenDrawer = async () => {
+        if (!selectedStoreId) return;
+        try {
+            setDrawerLoading(true);
+            await hardwareApi.openDrawer(selectedStoreId);
+            toast.success('開錢箱指令已送出');
+        } catch (error) {
+            console.error('Cash drawer command failed:', error);
+            toast.error('錢箱開啟失敗，請檢查出單機連線');
+        } finally {
+            setDrawerLoading(false);
+        }
     };
 
     const handleCalculate = (): string | null => {
@@ -197,17 +214,28 @@ export default function ShiftOpeningPage() {
                         <Button variant="outline" className="h-full text-2xl font-bold text-slate-700 bg-white hover:bg-blue-50 hover:text-blue-600 border-slate-200 rounded-xl" onClick={() => handleInput('.')}>.</Button>
                     </div>
 
-                    <Button
-                        onClick={handleSubmit}
-                        disabled={isLoading || !displayValue}
-                        className="w-full h-16 text-xl font-bold bg-[#D4AF37] hover:bg-[#C5A028] text-white shadow-md rounded-xl transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                        {isLoading ? (
-                            <span className="flex items-center gap-2">
-                                <span className="animate-spin">⟳</span> 處理中...
-                            </span>
-                        ) : '開始班次 (Start)'}
-                    </Button>
+                    <div className="grid grid-cols-3 gap-3">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            onClick={handleOpenDrawer}
+                            disabled={drawerLoading}
+                            className="h-16 text-base font-bold border-2 border-slate-300 bg-white rounded-xl"
+                        >
+                            <Coins className="mr-2 h-5 w-5" /> {drawerLoading ? '開啟中…' : '開啟錢箱'}
+                        </Button>
+                        <Button
+                            onClick={handleSubmit}
+                            disabled={isLoading || !displayValue}
+                            className="col-span-2 h-16 text-xl font-bold bg-[#D4AF37] hover:bg-[#C5A028] text-white shadow-md rounded-xl transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            {isLoading ? (
+                                <span className="flex items-center gap-2">
+                                    <span className="animate-spin">⟳</span> 處理中...
+                                </span>
+                            ) : '開始班次 (Start)'}
+                        </Button>
+                    </div>
                 </div>
             </Card>
         </div>
