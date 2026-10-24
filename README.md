@@ -68,13 +68,13 @@ StallEasy POS 是一套專為小吃攤與小型店家設計的 POS 系統，
 
 全新 Raspberry Pi 5 的 64-bit 系統、Docker、網路、安全設定、啟動及備份流程，請參考 [Raspberry Pi 5 Docker 部署指南](docs/RASPBERRY_PI_DOCKER.md)。
 
-專案放到 Pi 後，也可直接執行 `chmod +x scripts/*.sh && ./scripts/install-raspberry-pi.sh` 完成全自動安裝與測試。
+專案放到 Pi 後，也可直接執行 `chmod +x scripts/linux/*.sh && ./scripts/linux/install-raspberry-pi.sh` 完成全自動安裝與測試。
 
-統一的一鍵入口為 `./scripts/one-click-start.sh`：首次執行會安裝，後續執行會直接啟動。安裝後也會在 Raspberry Pi 桌面建立 `StallEasy POS 一鍵啟動` 圖示。
+統一的一鍵入口為 `./scripts/linux/one-click-start.sh`：首次執行會安裝，後續執行會直接啟動。安裝後也會在 Raspberry Pi 桌面建立 `StallEasy POS 一鍵啟動` 圖示。
 
 在 Raspberry Pi 桌面環境雙擊圖示後，服務就緒時會自動以 Chromium kiosk 模式開啟全螢幕 POS。
 
-安裝完成後可隨時執行 `./scripts/smoke-test.sh` 重新檢查前後端服務。
+安裝完成後可隨時執行 `./scripts/linux/smoke-test.sh` 重新檢查前後端服務。
 
 ### Xprinter C58H 與錢箱
 
@@ -88,11 +88,11 @@ StallEasy POS 是一套專為小吃攤與小型店家設計的 POS 系統，
 
 修改硬體橋接程式後，可用 `sudo systemctl restart stalleasy-hardware` 重新啟動；失敗工作會保留在 `/var/lib/stalleasy/control/printer/failed/` 供檢查。
 
-日常開機或手動停止後，執行 `./scripts/start.sh` 即可啟動系統；此腳本不會重新建置映像。
+日常開機或手動停止後，執行 `./scripts/linux/start.sh` 即可啟動系統；此腳本不會重新建置映像。
 
-需要安全停止所有服務時執行 `./scripts/stop.sh`；資料庫與上傳檔會保留。
+需要安全停止所有服務時執行 `./scripts/linux/stop.sh`；資料庫與上傳檔會保留。
 
-若預設帳密無法登入，執行 `./scripts/repair-login.sh` 可重新套用 `backend/scripts/setup_defaults.py` 並直接驗證兩組登入 API。
+若預設帳密無法登入，執行 `./scripts/linux/repair-login.sh` 可重新套用 `backend/scripts/setup_defaults.py` 並直接驗證兩組登入 API。
 
 ### 開發環境需求
 - Node.js 18+
@@ -107,8 +107,11 @@ cd frontend
 # 安裝依賴
 npm install
 
-# 啟動開發伺服器 (Frontend)
+# 啟動開發伺服器 (Frontend，預設開放區網連線)
 npm run dev
+
+# 僅允許本機連線
+npm run dev:local
 
 # 啟動開發伺服器 (Backend)
 ```bash
@@ -131,9 +134,9 @@ cd backend
 # 日常啟動伺服器
 .\backend.bat
 
-# 使用批次檔快速啟動
-.\start_dev.bat      (僅本機)
-.\start_dev_lan.bat  (支援手機平板連線)
+# 使用 Windows 批次檔快速啟動
+.\scripts\windows\start-dev.bat        (預設，支援手機平板連線)
+.\scripts\windows\start-dev-local.bat  (僅限本機)
 ```
 
 訪問 http://localhost:3000 (本機) 或 http://[電腦IP]:3000 (手機平板) 開始使用
@@ -179,10 +182,12 @@ StallEasyPos-V1.0.0/
 │   │   └── main.py         # FastAPI 入口文件
 │   ├── .env                # 環境變數設定
 │   ├── alembic/            # 資料庫遷移工具
-│   ├── scripts/            # 維護與工具腳本 (New)
-│   ├── backend.bat         # 啟動腳本 (Auto venv & run)
-│   ├── setup_backend.bat   # 環境安裝與初始化腳本
+│   ├── scripts/            # 後端維護與資料腳本
 │   └── requirements.txt    # Python 依賴清單
+├── scripts/
+│   ├── windows/            # Windows 啟動、安裝與測試批次檔
+│   ├── linux/              # Linux / Raspberry Pi 啟動與部署腳本
+│   └── *.py                # 跨平台硬體與輸入工具
 ├── docs/                    # 專案技術文件庫
 │   ├── specs/              # 系統規格定義 (API, DB Schema)
 │   ├── architecture/       # 系統架構圖與設計說明

@@ -14,6 +14,21 @@ from app.services.setting_service import SettingService
 
 class HardwareService:
     @staticmethod
+    def _legacy_printer(settings: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "id": "legacy",
+            "name": "主要印表機",
+            "enabled": True,
+            "type": settings.get("printer_type", "network"),
+            "ip": settings.get("printer_ip", ""),
+            "port": int(settings.get("printer_port", 9100)),
+            "usb_path": settings.get("printer_usb_path", "/dev/usb/lp0"),
+            "paper_width": settings.get("paper_width", "57mm"),
+            "encoding": settings.get("printer_encoding", "cp950"),
+            "outputs": ["receipt", "number_ticket", "shift_report", "drawer"],
+        }
+
+    @staticmethod
     async def enqueue(db, store_id: int, job: HardwareJob, requested_by: int) -> str:
         settings = await SettingService.get_settings_by_scope(
             db, store_id, SettingScope.DEVICE, job.device_id
@@ -21,26 +36,49 @@ class HardwareService:
         store_settings = await SettingService.get_settings_by_scope(
             db, store_id, SettingScope.STORE, None
         )
-        printer_type = settings.get("printer_type", "network")
-        if printer_type not in {"network", "usb"}:
-            raise HTTPException(status_code=400, detail="印表機連線方式必須是 network 或 usb")
-        if job.action != "scan_devices" and printer_type == "network" and not settings.get("printer_ip"):
-            raise HTTPException(status_code=400, detail="請先設定印表機 IP")
+        configured = settings.get("printers")
+        printers = configured if isinstance(configured, list) and configured else [HardwareService._legacy_printer(settings)]
+        printers = [printer for printer in printers if printer.get("enabled", True)]
+        output_by_action = {
+            "print_receipt": "receipt",
+            "print_kitchen": "kitchen",
+            "print_label": "label",
+            "print_number_ticket": "number_ticket",
+            "print_shift_report": "shift_report",
+            "open_drawer": "drawer",
+        }
+        if job.printer_id:
+            printers = [printer for printer in printers if printer.get("id") == job.printer_id]
+        elif job.action in output_by_action and configured:
+            output = output_by_action[job.action]
+            printers = [printer for printer in printers if output in printer.get("outputs", [])]
+        elif job.action == "test_print":
+            printers = printers[:1]
+
+        if job.action != "scan_devices" and not printers:
+            raise HTTPException(status_code=400, detail="沒有啟用可處理此輸出內容的印表機")
+        for printer in printers:
+            printer_type = printer.get("type", "network")
+            if printer_type not in {"network", "usb"}:
+                raise HTTPException(status_code=400, detail="印表機連線方式必須是 network 或 usb")
+            if printer_type == "network" and not printer.get("ip"):
+                raise HTTPException(status_code=400, detail=f"印表機「{printer.get('name', '')}」尚未設定 IP")
+
+        receipt_payload = job.receipt.model_dump() if job.receipt else None
+        if receipt_payload is not None:
+            receipt_payload["store_name"] = receipt_payload.get("store_name") or "StallEasy POS"
+            receipt_payload["receipt_header"] = store_settings.get("receipt_header", "")
+            receipt_payload["receipt_footer"] = store_settings.get("receipt_footer", "")
+            receipt_payload["business_id"] = store_settings.get("business_id", "")
 
         payload: dict[str, Any] = {
             "id": uuid.uuid4().hex,
             "store_id": store_id,
             "requested_by": requested_by,
             "action": job.action,
-            "printer": {
-                "type": printer_type,
-                "ip": settings.get("printer_ip", ""),
-                "port": int(settings.get("printer_port", 9100)),
-                "usb_path": settings.get("printer_usb_path", "/dev/usb/lp0"),
-                "paper_width": settings.get("paper_width", "57mm"),
-                "encoding": settings.get("printer_encoding", "cp950"),
-            },
-            "receipt": job.receipt.model_dump() if job.receipt else None,
+            "printers": printers,
+            "printer": printers[0] if printers else HardwareService._legacy_printer(settings),
+            "receipt": receipt_payload,
         }
         logo_url = store_settings.get("logo_url", "")
         if logo_url.startswith("/static/"):

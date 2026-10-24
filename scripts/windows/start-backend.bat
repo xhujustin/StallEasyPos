@@ -1,6 +1,7 @@
 @echo off
 chcp 65001 > nul
 setlocal
+cd /d "%~dp0..\..\backend"
 
 :: Backend 開發啟動腳本
 :: 功能: 自動檢查/建立 venv、安裝依賴、啟動 Uvicorn server

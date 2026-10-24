@@ -26,8 +26,13 @@ class OrderCreate(BaseModel):
     subtotal: float = 0
     service_fee: float = 0
     service_fee_rate: float = 0
+    tax_rate: float = 5
+    tax_mode: str = "inclusive"
+    tax_amount: float = 0
     order_type: OrderType = OrderType.TAKE_OUT
     payment_method: Optional[PaymentMethod] = None
+    delivery_platform: Optional[str] = None
+    payment_provider: Optional[str] = None
     source: OrderSource = OrderSource.POS
     cash_received: Optional[float] = None
     change_amount: Optional[float] = None
@@ -56,8 +61,13 @@ class OrderOut(BaseModel):
     subtotal: float
     service_fee: float
     service_fee_rate: float
+    tax_rate: float = 5
+    tax_mode: str = "inclusive"
+    tax_amount: float = 0
     total_amount: float
     payment_method: Optional[PaymentMethod]
+    delivery_platform: Optional[str] = None
+    payment_provider: Optional[str] = None
     source: OrderSource
     idempotency_key: str
     business_date: date
@@ -68,6 +78,7 @@ class OrderOut(BaseModel):
     
     cash_received: Optional[float] = None
     change_amount: Optional[float] = None
+    timezone: str = "Asia/Taipei"
     discount_amount: float = 0
     discount_note: Optional[str] = None
     

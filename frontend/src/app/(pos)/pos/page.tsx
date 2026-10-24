@@ -1,15 +1,16 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { useCartStore, CartItem, CartItemOption } from '@/lib/store/cart-store';
+import { useCartStore, CartItem, CartItemOption, HeldOrder } from '@/lib/store/cart-store';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { productApi, Product } from '@/lib/api/products';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Trash2, Plus, Minus, ShoppingCart, Loader2, AlertCircle, Clock3, RotateCcw } from 'lucide-react';
+import { Trash2, Plus, Minus, ShoppingCart, Loader2, AlertCircle, Clock3, RotateCcw, Printer } from 'lucide-react';
 import { CheckoutModal } from '@/components/pos/checkout-modal';
 import { ProductOptionDialog } from '@/components/pos/ProductOptionDialog';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -19,18 +20,40 @@ import { cn, getFullImageUrl } from '@/lib/utils';
 import { CashManagementDialog } from '@/components/pos/CashManagementDialog';
 import { shiftApi } from '@/lib/api/shifts';
 import { hardwareApi } from '@/lib/api/hardware';
+import type { HeldOrderPrintAction } from '@/lib/api/hardware';
 import { orderApi } from '@/lib/api/orders';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+
+const HELD_PRINT_OPTIONS: [HeldOrderPrintAction, string, string][] = [
+    ['print_receipt', '收據', 'receipt'],
+    ['print_number_ticket', '號碼牌', 'number_ticket'],
+    ['print_kitchen', '內場單', 'kitchen'],
+    ['print_label', '商品貼紙', 'label'],
+];
+
+const isPickupTimePast = (value: string) => {
+    if (!value) return false;
+    const currentMinute = new Date();
+    currentMinute.setSeconds(0, 0);
+    return new Date(value).getTime() < currentMinute.getTime();
+};
 
 export default function POSPage() {
     const router = useRouter();
     const [mounted, setMounted] = useState(false);
     const [showCheckout, setShowCheckout] = useState(false);
     const [showHeldOrders, setShowHeldOrders] = useState(false);
+    const [printMenuOrderId, setPrintMenuOrderId] = useState<string | null>(null);
+    const [printingHeldOrder, setPrintingHeldOrder] = useState<string | null>(null);
+    const [configuredHeldPrintActions, setConfiguredHeldPrintActions] = useState<HeldOrderPrintAction[]>([]);
+    const [configuredScheduledPrintActions, setConfiguredScheduledPrintActions] = useState<HeldOrderPrintAction[]>([]);
+    const [holdMode, setHoldMode] = useState<'normal' | 'scheduled'>('normal');
+    const [pickupTime, setPickupTime] = useState('');
+    const dispatchingHeldOrders = useRef(new Set<string>());
     const {
         items, heldOrders, currentOrderNo, addToCart, removeFromCart, updateQuantity, totalAmount,
-        updateCartItem, initStore, initializeOrderNumbers, holdCart, restoreHeldOrder, deleteHeldOrder
+        updateCartItem, initStore, initializeOrderNumbers, holdCart, restoreHeldOrder, deleteHeldOrder, markHeldOrderPrinted
     } = useCartStore();
     const [activeCategory, setActiveCategory] = useState('全部');
     const { user, selectedStoreId } = useAuthStore();
@@ -49,6 +72,56 @@ export default function POSPage() {
     const currentStore = user?.stores?.find((s) => s.id === storeId);
     const storeHeldOrders = heldOrders.filter(order => order.storeId === storeId);
 
+    const printHeldOutputs = async (heldOrder: HeldOrder, onlyAction?: HeldOrderPrintAction, outputMode: 'hold' | 'scheduled' = 'hold') => {
+        if (!storeId) return [];
+        const [device, profile] = await Promise.all([
+            settingsApi.getDeviceSettings(storeId),
+            settingsApi.getStoreProfile(storeId),
+        ]);
+        const outputByAction: Record<HeldOrderPrintAction, string> = {
+            print_receipt: 'receipt',
+            print_number_ticket: 'number_ticket',
+            print_kitchen: 'kitchen',
+            print_label: 'label',
+        };
+        const actionByOutput: Record<string, HeldOrderPrintAction> = {
+            receipt: 'print_receipt',
+            number_ticket: 'print_number_ticket',
+            kitchen: 'print_kitchen',
+            label: 'print_label',
+        };
+        const printers = (Array.isArray(device.printers) ? device.printers : []).filter((printer: any) => printer.enabled !== false);
+        const outputKey = outputMode === 'scheduled' ? 'scheduled_outputs' : 'hold_outputs';
+        const actions = onlyAction
+            ? [onlyAction]
+            : Array.from(new Set(printers.flatMap((printer: any) =>
+                (Array.isArray(printer[outputKey]) ? printer[outputKey] : [])
+                    .map((output: string) => actionByOutput[output])
+                    .filter(Boolean)
+            ))) as HeldOrderPrintAction[];
+        const printed: string[] = [];
+        for (const action of actions) {
+            const output = outputByAction[action];
+            const targets = printers.filter((printer: any) =>
+                Array.isArray(printer[outputKey]) && printer[outputKey].includes(output)
+            );
+            if (targets.length === 0) {
+                if (onlyAction) throw new Error('尚未指定處理此掛單輸出的印表機');
+                continue;
+            }
+            const results = await Promise.allSettled(targets.map((printer: any) =>
+                hardwareApi.printHeldOrder(storeId, heldOrder, action, profile.store_name, printer.id, profile.timezone)
+            ));
+            if (results.some(result => result.status === 'fulfilled')) {
+                markHeldOrderPrinted(heldOrder.id, output);
+                printed.push(output);
+            } else if (onlyAction) {
+                throw (results[0] as PromiseRejectedResult).reason;
+            }
+        }
+        return printed;
+    };
+
     const handleHoldCurrentOrder = () => {
         if (items.length === 0) {
             toast.error('購物車目前沒有可掛起的品項');
@@ -58,7 +131,18 @@ export default function POSPage() {
             toast.error('單號取得中，請稍後再試');
             return;
         }
-        holdCart();
+        let pickupAt: string | undefined;
+        if (holdMode === 'scheduled') {
+            const parsed = new Date(pickupTime);
+            if (!pickupTime || Number.isNaN(parsed.getTime()) || isPickupTimePast(pickupTime)) {
+                toast.error('請設定晚於現在的預計取餐時間');
+                return;
+            }
+            pickupAt = parsed.toISOString();
+        }
+        holdCart(pickupAt);
+        setHoldMode('normal');
+        setPickupTime('');
         setShowHeldOrders(false);
         toast.success('訂單已掛起，可隨時從掛單清單取回');
     };
@@ -68,6 +152,22 @@ export default function POSPage() {
         restoreHeldOrder(heldOrderId);
         setShowHeldOrders(false);
         toast.success('掛單已取回');
+    };
+
+    const handlePrintHeldOrder = async (heldOrderId: string, action: HeldOrderPrintAction, label: string) => {
+        const heldOrder = storeHeldOrders.find(order => order.id === heldOrderId);
+        if (!storeId || !heldOrder) return;
+        const printKey = `${heldOrderId}:${action}`;
+        setPrintingHeldOrder(printKey);
+        try {
+            await printHeldOutputs(heldOrder, action);
+            toast.success(`${label}已送出列印`);
+        } catch (error) {
+            console.error('Held order print failed:', error);
+            toast.error(`${label}列印失敗，請檢查印表機連線與輸出設定`);
+        } finally {
+            setPrintingHeldOrder(null);
+        }
     };
 
     const roleLabels: Record<string, string> = {
@@ -94,6 +194,7 @@ export default function POSPage() {
     const [deviceSettings, setDeviceSettings] = useState({
         pos_product_card_size: 'medium',
         pos_show_product_image: true,
+        scheduled_order_dispatch_lead_minutes: 15,
     });
 
     useEffect(() => {
@@ -104,7 +205,24 @@ export default function POSPage() {
                 setDeviceSettings({
                     pos_product_card_size: data.pos_product_card_size || 'medium',
                     pos_show_product_image: data.pos_show_product_image ?? true,
+                    scheduled_order_dispatch_lead_minutes: Number(data.scheduled_order_dispatch_lead_minutes ?? 15),
                 });
+                const enabledOutputs = new Set<string>(
+                    (Array.isArray(data.printers) ? data.printers : [])
+                        .filter((printer: any) => printer.enabled !== false)
+                        .flatMap((printer: any) => Array.isArray(printer.hold_outputs) ? printer.hold_outputs : [])
+                );
+                setConfiguredHeldPrintActions(
+                    HELD_PRINT_OPTIONS.filter(([, , output]) => enabledOutputs.has(output)).map(([action]) => action)
+                );
+                const scheduledOutputs = new Set<string>(
+                    (Array.isArray(data.printers) ? data.printers : [])
+                        .filter((printer: any) => printer.enabled !== false)
+                        .flatMap((printer: any) => Array.isArray(printer.scheduled_outputs) ? printer.scheduled_outputs : [])
+                );
+                setConfiguredScheduledPrintActions(
+                    HELD_PRINT_OPTIONS.filter(([, , output]) => scheduledOutputs.has(output)).map(([action]) => action)
+                );
             });
         }
         setMounted(true);
@@ -123,6 +241,35 @@ export default function POSPage() {
         };
         fetchShift();
     }, [storeId]);
+
+    useEffect(() => {
+        if (!storeId || configuredScheduledPrintActions.length === 0) return;
+        const dispatchDueOrders = async () => {
+            const leadMs = deviceSettings.scheduled_order_dispatch_lead_minutes * 60_000;
+            const dueOrders = useCartStore.getState().heldOrders.filter(order =>
+                order.storeId === storeId && order.pickupAt &&
+                new Date(order.pickupAt).getTime() - leadMs <= Date.now() &&
+                configuredScheduledPrintActions.some(action => {
+                    const output = HELD_PRINT_OPTIONS.find(([candidate]) => candidate === action)?.[2];
+                    return output && !(order.printedOutputs || []).includes(output);
+                }) && !dispatchingHeldOrders.current.has(order.id)
+            );
+            for (const order of dueOrders) {
+                dispatchingHeldOrders.current.add(order.id);
+                try {
+                    const printed = await printHeldOutputs(order, undefined, 'scheduled');
+                    if (printed.length > 0) toast.success(`單號 #${order.orderNo ?? '—'} 已自動派發`);
+                } catch (error) {
+                    console.error('Scheduled held order dispatch failed:', error);
+                } finally {
+                    dispatchingHeldOrders.current.delete(order.id);
+                }
+            }
+        };
+        void dispatchDueOrders();
+        const timer = window.setInterval(dispatchDueOrders, 15_000);
+        return () => window.clearInterval(timer);
+    }, [storeId, configuredScheduledPrintActions, deviceSettings.scheduled_order_dispatch_lead_minutes]);
 
     useEffect(() => {
         if (!storeId || currentOrderNo !== null) return;
@@ -466,8 +613,32 @@ export default function POSPage() {
                                             {order.items.map(item => `${item.name}×${item.quantity}`).join('、')}
                                         </div>
                                         <div className="text-sm font-bold text-[#A38322] mt-2">${order.total}</div>
+                                        {order.pickupAt && (
+                                            <div className="mt-1 text-xs font-bold text-blue-700">
+                                                預計取餐：{new Date(order.pickupAt).toLocaleString('zh-TW', { hour12: false })}
+                                            </div>
+                                        )}
+                                        {(order.printedOutputs || []).length > 0 && (
+                                            <div className="mt-1 text-[11px] font-medium text-emerald-700">
+                                                已列印：{(order.printedOutputs || []).map(output => ({
+                                                    receipt: '收據',
+                                                    number_ticket: '號碼牌',
+                                                    kitchen: '內場單',
+                                                    label: '商品貼紙',
+                                                }[output] || output)).join('、')}
+                                            </div>
+                                        )}
                                     </div>
                                     <div className="flex gap-1 shrink-0">
+                                        {configuredHeldPrintActions.length > 0 && (
+                                            <Button
+                                                size="sm"
+                                                variant="outline"
+                                                onClick={() => setPrintMenuOrderId(current => current === order.id ? null : order.id)}
+                                            >
+                                                <Printer className="w-3.5 h-3.5 mr-1" />列印
+                                            </Button>
+                                        )}
                                         <Button size="sm" onClick={() => handleRestoreHeldOrder(order.id)}>
                                             <RotateCcw className="w-3.5 h-3.5 mr-1" />取回
                                         </Button>
@@ -483,9 +654,72 @@ export default function POSPage() {
                                         </Button>
                                     </div>
                                 </div>
+                                {printMenuOrderId === order.id && configuredHeldPrintActions.length > 0 && (
+                                    <div className="mt-3 flex flex-wrap gap-2 border-t border-slate-200 pt-3">
+                                        {HELD_PRINT_OPTIONS.filter(([action]) => configuredHeldPrintActions.includes(action)).map(([action, label]) => {
+                                            const printKey = `${order.id}:${action}`;
+                                            return (
+                                                <Button
+                                                    key={action}
+                                                    type="button"
+                                                    size="sm"
+                                                    variant="secondary"
+                                                    disabled={printingHeldOrder !== null}
+                                                    onClick={() => handlePrintHeldOrder(order.id, action, label)}
+                                                >
+                                                    {printingHeldOrder === printKey && <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />}
+                                                    {label}
+                                                </Button>
+                                            );
+                                        })}
+                                    </div>
+                                )}
                             </div>
                         ))}
                     </div>
+
+                    {items.length > 0 && (
+                        <div className="rounded-xl border border-blue-100 bg-blue-50/60 p-3 space-y-3">
+                            <div className="grid grid-cols-2 gap-2">
+                                <Button type="button" size="sm" variant={holdMode === 'normal' ? 'default' : 'outline'} onClick={() => setHoldMode('normal')}>一般掛單</Button>
+                                <Button
+                                    type="button"
+                                    size="sm"
+                                    variant={holdMode === 'scheduled' ? 'default' : 'outline'}
+                                    onClick={() => {
+                                        setHoldMode('scheduled');
+                                        if (!pickupTime) {
+                                            const now = new Date();
+                                            const local = new Date(now.getTime() - now.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+                                            setPickupTime(local);
+                                        }
+                                    }}
+                                >定時取餐</Button>
+                            </div>
+                            {holdMode === 'scheduled' && (
+                                <div>
+                                    <label className="mb-1 block text-xs font-bold text-slate-600">預計取餐時間</label>
+                                    <Input
+                                        type="datetime-local"
+                                        value={pickupTime}
+                                        min={new Date(Date.now() - new Date().getTimezoneOffset() * 60_000).toISOString().slice(0, 16)}
+                                        onChange={(e) => {
+                                            const value = e.target.value;
+                                            setPickupTime(value);
+                                            if (isPickupTimePast(value)) {
+                                                toast.warning('預計取餐時間不能早於現在，請重新選擇');
+                                            }
+                                        }}
+                                        className={cn("bg-white", isPickupTimePast(pickupTime) && "border-red-400 focus-visible:ring-red-300")}
+                                    />
+                                    {isPickupTimePast(pickupTime) && (
+                                        <p className="mt-1 text-xs font-bold text-red-600">預計取餐時間已經過去，無法建立定時掛單。</p>
+                                    )}
+                                    <p className="mt-1 text-[11px] text-slate-500">將提前 {deviceSettings.scheduled_order_dispatch_lead_minutes} 分鐘派發設定的輸出內容。</p>
+                                </div>
+                            )}
+                        </div>
+                    )}
 
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setShowHeldOrders(false)}>關閉</Button>
@@ -494,7 +728,7 @@ export default function POSPage() {
                             disabled={items.length === 0}
                             className="bg-[#D4AF37] hover:bg-[#C5A028] text-white"
                         >
-                            掛起目前訂單（{items.length} 項）
+                            {holdMode === 'scheduled' ? '建立定時掛單' : '掛起目前訂單'}（{items.length} 項）
                         </Button>
                     </DialogFooter>
                 </DialogContent>

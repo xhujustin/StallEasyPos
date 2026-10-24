@@ -12,30 +12,30 @@
 
 ## 快速開始 (Windows)
 
-我們提供了一個便捷腳本 `backend.bat` 來自動化環境建置。
+Windows 腳本統一放在專案根目錄的 `scripts/windows/`。
 
-1. **進入 backend 目錄**
+1. **進入專案根目錄**
    ```powershell
-   cd backend
+   cd StallEasyPos
    ```
 
 2. **設定環境變數**
    複製範本並修改設定：
    ```powershell
-   copy .env.example .env
+   copy backend\.env.example backend\.env
    ```
    *請務必修改 `DATABASE_URL` 與 `SECRET_KEY`*
 
 3. **啟動伺服器**
-   雙擊 `backend.bat` 或在終端機執行：
+   雙擊 `scripts\windows\start-backend.bat` 或在終端機執行：
    ```powershell
-   .\backend.bat
+   .\scripts\windows\start-backend.bat
    ```
    腳本會自動：
    - 建立/啟用 `venv`
    - **檢查資料庫同步狀態 (`check_db.py`)** <new>
    - 安裝依賴 (`requirements.txt`)
-   - 啟動 Uvicorn (http://localhost:8000)
+   - 啟動 Uvicorn（預設綁定 `0.0.0.0:8000`，可由區網裝置連線）
 
 ## 目錄結構
 
@@ -49,7 +49,6 @@ backend/
 │   ├── services/       # 業務邏輯層
 │   └── workers/        # 非同步任務與排程
 ├── requirements.txt    # Python 依賴清單
-├── backend.bat         # Windows 啟動腳本
 └── Dockerfile          # 容器化部署設定
 ```
 

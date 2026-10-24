@@ -1,6 +1,7 @@
 import React from 'react';
 import { X, Receipt, Ban, CheckCircle } from 'lucide-react';
 import { Order, OrderItemOption } from '@/lib/api/orders';
+import { formatDateTime } from '@/lib/utils';
 
 interface OrderDetailModalProps {
     isOpen: boolean;
@@ -19,9 +20,7 @@ export function OrderDetailModal({ isOpen, order, onClose, onStatusChange }: Ord
         return new Intl.NumberFormat('zh-TW', { style: 'currency', currency: 'TWD', minimumFractionDigits: 0 }).format(amount);
     };
 
-    const formatDate = (dateString: string) => {
-        return new Date(dateString).toLocaleString('zh-TW');
-    };
+    const formatDate = (dateString: string) => formatDateTime(dateString, order.timezone);
 
     // Helper to render options safely
     const renderOptions = (options: any[]) => {
@@ -122,7 +121,7 @@ export function OrderDetailModal({ isOpen, order, onClose, onStatusChange }: Ord
                             <tfoot className="bg-gray-50 border-t border-gray-200">
                                 <tr>
                                     <td colSpan={2} className="px-4 py-2 text-left text-xs text-gray-500 align-middle">
-                                        支付方式: <span className="uppercase font-bold text-gray-700 ml-1">{order.payment_method === 'cash' ? '現金' : order.payment_method || '-'}</span>
+                                        支付方式: <span className="uppercase font-bold text-gray-700 ml-1">{order.delivery_platform || order.payment_provider || (order.payment_method === 'cash' ? '現金' : order.payment_method || '-')}</span>
                                     </td>
                                     <td className="px-4 py-2 text-right text-sm font-bold text-gray-700 align-middle border-l border-gray-100">商品小計</td>
                                     <td className="px-4 py-2 text-right font-bold text-gray-900 align-middle">
@@ -136,6 +135,15 @@ export function OrderDetailModal({ isOpen, order, onClose, onStatusChange }: Ord
                                     </td>
                                     <td className={`px-4 py-1 text-right text-sm font-bold align-middle ${order.service_fee > 0 ? 'text-red-500' : 'text-slate-500'}`}>
                                         {order.service_fee > 0 ? '+' : ''}{formatCurrency(order.service_fee || 0)}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td colSpan={2} className="px-4 py-1"></td>
+                                    <td className="px-4 py-1 text-right text-xs font-bold text-slate-500 align-middle border-l border-gray-100">
+                                        營業稅 ({order.tax_rate || 0}%{order.tax_mode === 'exclusive' ? ' 外加' : ' 內含'})
+                                    </td>
+                                    <td className="px-4 py-1 text-right text-sm font-bold text-slate-500 align-middle">
+                                        {order.tax_mode === 'exclusive' ? '+' : ''}{formatCurrency(order.tax_amount || 0)}
                                     </td>
                                 </tr>
                                 <tr className="border-t border-gray-200/50">

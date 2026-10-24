@@ -29,3 +29,23 @@ export function getFullImageUrl(url: string | null | undefined) {
 
   return `${cleanBaseUrl}${cleanPath}`;
 }
+
+export function formatDateTime(value: string | number | Date, timeZone = 'Asia/Taipei') {
+  return new Intl.DateTimeFormat('zh-TW', {
+    timeZone,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hour12: false,
+  }).format(new Date(value));
+}
+
+export function formatTime(value: string | number | Date, timeZone = 'Asia/Taipei') {
+  return new Intl.DateTimeFormat('zh-TW', {
+    timeZone, hour: '2-digit', minute: '2-digit', hour12: false,
+  }).format(new Date(value));
+}
+
+export function dateKeyInTimeZone(value: string | number | Date = new Date(), timeZone = 'Asia/Taipei') {
+  return new Intl.DateTimeFormat('sv-SE', {
+    timeZone, year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(new Date(value));
+}

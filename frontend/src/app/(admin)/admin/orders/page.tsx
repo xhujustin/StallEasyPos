@@ -5,6 +5,8 @@ import { useAuthStore } from '@/lib/store/auth-store';
 import { orderApi, Order, OrderStatus } from '@/lib/api/orders';
 import { Search, Filter, Calendar, ChevronLeft, ChevronRight, Eye } from 'lucide-react';
 import { OrderDetailModal } from '@/components/orders/OrderDetailModal';
+import { dateKeyInTimeZone, formatTime } from '@/lib/utils';
+import { settingsApi } from '@/lib/api/settings';
 
 export default function OrderListPage() {
     const { selectedStoreId: storeId } = useAuthStore();
@@ -16,8 +18,13 @@ export default function OrderListPage() {
 
     // Filters
     const [statusFilter, setStatusFilter] = useState<string>('');
-    const [dateFilter, setDateFilter] = useState<string>(new Date().toLocaleDateString('sv').split(' ')[0]); // Default to today in local time
+    const [dateFilter, setDateFilter] = useState<string>('');
     const [searchTerm, setSearchTerm] = useState<string>(''); // Order No
+
+    useEffect(() => {
+        if (!storeId) return;
+        settingsApi.getStoreProfile(storeId).then(profile => setDateFilter(dateKeyInTimeZone(new Date(), profile.timezone)));
+    }, [storeId]);
 
     const loadOrders = async () => {
         if (!storeId) return;
@@ -191,7 +198,7 @@ export default function OrderListPage() {
                                             #{order.order_no}
                                         </td>
                                         <td className="px-6 py-4 text-xs text-gray-500">
-                                            {new Date(order.created_at).toLocaleString('zh-TW', { hour: '2-digit', minute: '2-digit', hour12: false })}
+                                            {formatTime(order.created_at, order.timezone)}
                                         </td>
                                         <td className="px-6 py-4 text-center">
                                             <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${order.order_type === 'dine_in' ? 'bg-blue-50 text-blue-600 border border-blue-100' : 'bg-gray-50 text-gray-500 border border-gray-100'

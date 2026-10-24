@@ -27,6 +27,9 @@ export interface HeldOrder {
     createdAt: string;
     items: CartItem[];
     total: number;
+    printedOutputs?: string[];
+    pickupAt?: string;
+    dispatchedAt?: string;
 }
 
 interface CartState {
@@ -34,6 +37,7 @@ interface CartState {
     heldOrders: HeldOrder[];
     storeId: number | null;
     currentOrderNo: number | null;
+    currentPrintedOutputs: string[];
     initStore: (storeId: number) => void;
     initializeOrderNumbers: (storeId: number, nextOrderNo: number) => void;
     // addToCart now accepts more details
@@ -42,7 +46,8 @@ interface CartState {
     updateQuantity: (cartItemId: string, quantity: number) => void;
     updateCartItem: (cartItemId: string, quantity: number, options: CartItemOption[], note: string, basePrice: number) => void;
     clearCart: () => void;
-    holdCart: () => void;
+    holdCart: (pickupAt?: string) => void;
+    markHeldOrderPrinted: (heldOrderId: string, output: string) => void;
     restoreHeldOrder: (heldOrderId: string) => void;
     deleteHeldOrder: (heldOrderId: string) => void;
     totalAmount: () => number;
@@ -55,11 +60,12 @@ export const useCartStore = create<CartState>()(
             heldOrders: [],
             storeId: null,
             currentOrderNo: null,
+            currentPrintedOutputs: [],
             initStore: (storeId) => {
                 const currentStoreId = get().storeId;
                 if (currentStoreId !== null && currentStoreId !== storeId) {
                     // Store changed! Clear cart
-                    set({ items: [], storeId, currentOrderNo: null });
+                    set({ items: [], storeId, currentOrderNo: null, currentPrintedOutputs: [] });
                 } else {
                     set({ storeId });
                 }
@@ -112,6 +118,7 @@ export const useCartStore = create<CartState>()(
                             items: state.items.map((i) =>
                                 i.cartItemId === existing.cartItemId ? { ...i, quantity: i.quantity + quantity } : i
                             ),
+                            currentPrintedOutputs: [],
                         };
                     }
 
@@ -136,16 +143,18 @@ export const useCartStore = create<CartState>()(
 
                     return {
                         items: [...state.items, newItem],
+                        currentPrintedOutputs: [],
                     };
                 });
             },
             removeFromCart: (cartItemId) =>
-                set((state) => ({ items: state.items.filter((i) => i.cartItemId !== cartItemId) })),
+                set((state) => ({ items: state.items.filter((i) => i.cartItemId !== cartItemId), currentPrintedOutputs: [] })),
             updateQuantity: (cartItemId, quantity) =>
                 set((state) => ({
                     items: quantity > 0
                         ? state.items.map((i) => (i.cartItemId === cartItemId ? { ...i, quantity } : i))
                         : state.items.filter((i) => i.cartItemId !== cartItemId),
+                    currentPrintedOutputs: [],
                 })),
             updateCartItem: (cartItemId, quantity, options, note, basePrice) =>
                 set((state) => ({
@@ -158,9 +167,10 @@ export const useCartStore = create<CartState>()(
                             price: Number(basePrice) + options.reduce((sum, option) => sum + Number(option.priceAdjustment), 0),
                         }
                         : item),
+                    currentPrintedOutputs: [],
                 })),
-            clearCart: () => set({ items: [], currentOrderNo: null }),
-            holdCart: () => set((state) => {
+            clearCart: () => set({ items: [], currentOrderNo: null, currentPrintedOutputs: [] }),
+            holdCart: (pickupAt) => set((state) => {
                 if (!state.storeId || state.items.length === 0) return state;
                 const heldOrder: HeldOrder = {
                     id: (typeof crypto !== 'undefined' && crypto.randomUUID)
@@ -174,13 +184,21 @@ export const useCartStore = create<CartState>()(
                         selectedOptions: item.selectedOptions.map(option => ({ ...option })),
                     })),
                     total: state.items.reduce((sum, item) => sum + item.price * item.quantity, 0),
+                    printedOutputs: [...state.currentPrintedOutputs],
+                    pickupAt,
                 };
                 return {
                     heldOrders: [heldOrder, ...state.heldOrders],
                     items: [],
                     currentOrderNo: state.currentOrderNo ? state.currentOrderNo + 1 : null,
+                    currentPrintedOutputs: [],
                 };
             }),
+            markHeldOrderPrinted: (heldOrderId, output) => set((state) => ({
+                heldOrders: state.heldOrders.map(order => order.id === heldOrderId
+                    ? { ...order, printedOutputs: Array.from(new Set([...(order.printedOutputs || []), output])) }
+                    : order),
+            })),
             restoreHeldOrder: (heldOrderId) => set((state) => {
                 const heldOrder = state.heldOrders.find(order => order.id === heldOrderId);
                 if (!heldOrder || heldOrder.storeId !== state.storeId) return state;
@@ -190,6 +208,7 @@ export const useCartStore = create<CartState>()(
                         selectedOptions: item.selectedOptions.map(option => ({ ...option })),
                     })),
                     currentOrderNo: heldOrder.orderNo || state.currentOrderNo,
+                    currentPrintedOutputs: [...(heldOrder.printedOutputs || [])],
                     heldOrders: state.heldOrders.filter(order => order.id !== heldOrderId),
                 };
             }),

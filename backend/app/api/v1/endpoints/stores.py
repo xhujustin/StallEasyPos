@@ -42,3 +42,13 @@ async def update_store(
     """更新目前使用者可管理的店鋪基本資料。"""
     store = await StoreService.update_store(db, store_id, store_in, current_user_id)
     return ResponseBase(data=store)
+
+@router.delete("/{store_id}", response_model=ResponseBase[bool])
+async def delete_store(
+    store_id: int,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user_id: Annotated[int, Depends(get_current_user_id)]
+):
+    """永久刪除店鋪；僅限店主或系統管理員。"""
+    await StoreService.delete_store(db, store_id, current_user_id)
+    return ResponseBase(message="店鋪已刪除", data=True)

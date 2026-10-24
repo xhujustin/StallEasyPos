@@ -18,8 +18,13 @@ def get_password_hash(password: str) -> str:
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     """產生 JWT Access Token"""
     to_encode = data.copy()
-    if expires_delta:
+    if expires_delta is not None and expires_delta.total_seconds() <= 0:
+        # POS terminals remain signed in until the operator explicitly logs out.
+        return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+    if expires_delta is not None:
         expire = datetime.now(timezone.utc) + expires_delta
+    elif settings.ACCESS_TOKEN_EXPIRE_MINUTES <= 0:
+        return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
     else:
         expire = datetime.now(timezone.utc) + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     

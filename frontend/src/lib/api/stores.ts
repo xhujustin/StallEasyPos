@@ -16,4 +16,9 @@ export const storeApi = {
         const response = await apiClient.patch<ResponseBase<Store>>(`/stores/${storeId}`, data);
         return response.data.data;
     },
+
+    delete: async (storeId: number) => {
+        const response = await apiClient.delete<ResponseBase<boolean>>(`/stores/${storeId}`);
+        return response.data.data;
+    },
 };

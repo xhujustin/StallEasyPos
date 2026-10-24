@@ -1,6 +1,7 @@
 
 import React from 'react';
 import { Order } from '@/lib/api/orders';
+import { formatDateTime } from '@/lib/utils';
 
 import { createPortal } from 'react-dom';
 
@@ -17,34 +18,21 @@ export const ReceiptPrinter = ({ order }: ReceiptPrinterProps) => {
         return new Intl.NumberFormat('zh-TW', { style: 'currency', currency: 'TWD', minimumFractionDigits: 0 }).format(amount);
     };
 
-    const formatDate = (dateString: string) => {
-        return new Date(dateString).toLocaleString('zh-TW', {
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit',
-            hour: '2-digit',
-            minute: '2-digit',
-            hour12: false
-        });
-    };
-
     return createPortal(
         <div className="print-only-container bg-white text-black font-mono text-[12px] px-1 py-0 w-[57mm] mx-auto">
             {/* Store Name - Placeholder or from Context */}
             <div className="text-center mb-2">
-                <h1 className="text-xl font-bold">StallEasy POS</h1>
-                <p className="text-xs mt-1">感謝您的光臨</p>
             </div>
 
             {/* Order Info */}
             <div className="border-b border-black pb-2 mb-2 border-dashed">
                 <div className="flex justify-between text-xs">
                     <span>單號: #{order.order_no}</span>
-                    <span>{formatDate(order.created_at)}</span>
+                    <span>店家：StallEasy POS</span>
                 </div>
                 <div className="flex justify-between text-xs mt-1">
                     <span>收銀員: {order.created_by?.nickname || order.created_by?.full_name || order.created_by?.username || order.source}</span>
-                    <span className="uppercase">{order.payment_method}</span>
+                    <span>{order.delivery_platform || order.payment_provider || (order.payment_method === 'cash' ? '現金' : order.payment_method)}</span>
                 </div>
             </div>
 
@@ -54,8 +42,9 @@ export const ReceiptPrinter = ({ order }: ReceiptPrinterProps) => {
                     <thead>
                         <tr className="border-b border-black border-dashed">
                             <th className="py-1">品項</th>
-                            <th className="text-center py-1 w-8">數</th>
-                            <th className="text-right py-1 w-12">金額</th>
+                            <th className="text-center py-1 w-12">售價</th>
+                            <th className="text-center py-1 w-8">數量</th>
+                            <th className="text-center py-1 w-12">金額</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -65,13 +54,14 @@ export const ReceiptPrinter = ({ order }: ReceiptPrinterProps) => {
                                     <td className="py-1 pt-2 align-top font-bold">
                                         {item.name_snapshot}
                                     </td>
-                                    <td className="text-center pt-2 align-top">x{item.quantity}</td>
-                                    <td className="text-right pt-2 align-top">{formatCurrency(item.price_snapshot * item.quantity)}</td>
+                                    <td className="text-center pt-2 align-top">{formatCurrency(item.price_snapshot)}</td>
+                                    <td className="text-center pt-2 align-top">{item.quantity}</td>
+                                    <td className="text-center pt-2 align-top">{formatCurrency(item.price_snapshot * item.quantity)}</td>
                                 </tr>
                                 {/* Options */}
                                 {item.options && item.options.length > 0 && (
                                     <tr>
-                                        <td colSpan={3} className="pb-1 text-xs text-slate-500">
+                                        <td colSpan={4} className="pb-1 text-left text-xs text-slate-500">
                                             {item.options.map((opt: any, i) => (
                                                 <span key={i} className="mr-2">
                                                     {opt.option_name}
@@ -84,8 +74,8 @@ export const ReceiptPrinter = ({ order }: ReceiptPrinterProps) => {
                                 {/* Note */}
                                 {item.note && (
                                     <tr>
-                                        <td colSpan={3} className="pb-1 text-xs text-slate-500 italic">
-                                            備註: {item.note}
+                                        <td colSpan={4} className="pb-1 text-left text-xs text-slate-500 italic">
+                                            - {item.note}
                                         </td>
                                     </tr>
                                 )}
@@ -107,6 +97,10 @@ export const ReceiptPrinter = ({ order }: ReceiptPrinterProps) => {
                         <span>{formatCurrency(Number(order.service_fee))}</span>
                     </div>
                 )}
+                <div className="flex justify-between text-sm">
+                    <span>營業稅 ({order.tax_rate}%{order.tax_mode === 'inclusive' ? ' 內含' : ' 外加'})</span>
+                    <span>{formatCurrency(Number(order.tax_amount || 0))}</span>
+                </div>
                 {Number(order.discount_amount) > 0 && (
                     <>
                         <div className="flex justify-between text-sm">
@@ -123,18 +117,6 @@ export const ReceiptPrinter = ({ order }: ReceiptPrinterProps) => {
                     <span>{Number(order.discount_amount) > 0 ? '折後總計' : '總計'}</span>
                     <span>{formatCurrency(order.total_amount)}</span>
                 </div>
-                {(order.cash_received != null && order.change_amount != null) && (
-                    <div className="mt-2 text-xs">
-                        <div className="flex justify-between">
-                            <span>實收</span>
-                            <span>{formatCurrency(order.cash_received)}</span>
-                        </div>
-                        <div className="flex justify-between">
-                            <span>找零</span>
-                            <span>{formatCurrency(order.change_amount)}</span>
-                        </div>
-                    </div>
-                )}
             </div>
 
             {/* Footer */}

@@ -11,7 +11,7 @@ printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" > "%s"\n' "$CALL_LOG" > "$MOCK
 chmod +x "$MOCK_BIN/chromium"
 
 HOME="$TEST_ROOT/home" WAYLAND_DISPLAY=wayland-0 PATH="$MOCK_BIN:/usr/bin:/bin" \
-  scripts/open-kiosk.sh
+  scripts/linux/open-kiosk.sh
 
 for attempt in {1..20}; do
   [[ -f "$CALL_LOG" ]] && break

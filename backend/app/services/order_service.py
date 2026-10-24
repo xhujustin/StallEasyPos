@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException
 from sqlalchemy.orm import selectinload
 
-from app.models.order import Order, OrderItem, OrderStatus
+from app.models.order import Order, OrderItem, OrderStatus, OrderType, PaymentMethod
 from app.models.product import Product
 from app.models.product_material import ProductMaterial
 from app.schemas.orders import OrderCreate
@@ -15,16 +15,20 @@ from app.services.store_service import StoreService
 from app.models.product_attribute import ProductAttributeOption, OptionMaterial
 from app.services.material_service import MaterialService
 from app.services.shift_service import ShiftService
+from app.services.setting_service import SettingService
+from app.models.system_setting import SettingScope
+from app.services.store_clock import get_store_clock
 
 class OrderService:
     @staticmethod
     async def get_next_order_no(db: AsyncSession, store_id: int, user_id: int) -> int:
         """取得店鋪今日下一個可用單號。"""
         await StoreService.get_store_if_authorized(db, store_id, user_id)
+        _, business_date = await get_store_clock(db, store_id)
         result = await db.execute(
             select(func.max(Order.order_no))
             .where(Order.store_id == store_id)
-            .where(Order.business_date == date.today())
+            .where(Order.business_date == business_date)
             .where(Order.order_no < 10_000_000)
         )
         return (result.scalar() or 0) + 1
@@ -43,6 +47,7 @@ class OrderService:
         """
         # 1. 驗證權限
         await StoreService.get_store_if_authorized(db, store_id, user_id)
+        timezone_name, business_date = await get_store_clock(db, store_id)
 
         # 1.5 Get Current Shift (Automatic Association)
         # We try to associate the order with the currently OPEN shift for this store.
@@ -68,7 +73,7 @@ class OrderService:
         res = await db.execute(
             select(func.max(Order.order_no))
             .where(Order.store_id == store_id)
-            .where(Order.business_date == date.today())
+            .where(Order.business_date == business_date)
             .where(Order.order_no < 10_000_000) # Ignore legacy date-based numbers
         )
         max_no = res.scalar() or 0
@@ -81,7 +86,7 @@ class OrderService:
             requested_result = await db.execute(
                 select(Order.id)
                 .where(Order.store_id == store_id)
-                .where(Order.business_date == date.today())
+                .where(Order.business_date == business_date)
                 .where(Order.order_no == requested_order_no)
             )
             if requested_result.scalar_one_or_none() is None:
@@ -180,13 +185,28 @@ class OrderService:
             )
         
         # 6. Validate Total
-        # expected = subtotal + service_fee - discount
-        expected_total = order_in.subtotal + order_in.service_fee - order_in.discount_amount
+        taxable_amount = max(0, order_in.subtotal + order_in.service_fee - order_in.discount_amount)
+        configured_tax_rate = await SettingService.get_setting(db, store_id, "tax_rate", SettingScope.STORE)
+        tax_rate = min(100.0, max(0.0, float(5 if configured_tax_rate is None else configured_tax_rate)))
+        configured_tax_mode = str(await SettingService.get_setting(db, store_id, "tax_mode", SettingScope.STORE) or "inclusive")
+        tax_mode = configured_tax_mode if configured_tax_mode in {"inclusive", "exclusive"} else "inclusive"
+        tax_amount = taxable_amount - (taxable_amount / (1 + tax_rate / 100)) if tax_mode == "inclusive" and tax_rate > 0 else taxable_amount * tax_rate / 100
+        expected_total = taxable_amount if tax_mode == "inclusive" else taxable_amount + tax_amount
         if abs(expected_total - order_in.total_amount) > 1.0: # Allow rounding tolerance
              raise HTTPException(
                 status_code=400, 
-                detail=f"Total mismatch. (Subtotal+ServiceFee-Discount): {expected_total}, Received total_amount: {order_in.total_amount}"
+                detail=f"Total mismatch after tax calculation. Expected: {expected_total}, Received: {order_in.total_amount}"
             )
+
+        if order_in.order_type == OrderType.DELIVERY:
+            if not order_in.delivery_platform or not order_in.delivery_platform.strip():
+                raise HTTPException(status_code=422, detail="外送訂單必須指定外送平台")
+            if order_in.payment_method != PaymentMethod.PLATFORM_COLLECT:
+                raise HTTPException(status_code=422, detail="外送訂單支付方式必須為平台代收")
+        elif order_in.payment_method == PaymentMethod.LINEPAY and (
+            not order_in.payment_provider or not order_in.payment_provider.strip()
+        ):
+            raise HTTPException(status_code=422, detail="多元支付必須指定支付方式")
 
         # 7. Create Order
         order = Order(
@@ -196,15 +216,22 @@ class OrderService:
             subtotal=order_in.subtotal,
             service_fee=order_in.service_fee,
             service_fee_rate=order_in.service_fee_rate,
+            tax_rate=tax_rate,
+            tax_mode=tax_mode,
+            tax_amount=tax_amount,
             order_type=order_in.order_type,
             total_amount=order_in.total_amount,
             status=OrderStatus.PAID if order_in.payment_method else OrderStatus.PENDING_PAYMENT,
             source=order_in.source,
             payment_method=order_in.payment_method,
+            delivery_platform=order_in.delivery_platform,
+            payment_provider=order_in.payment_provider,
             items=order_items, # Relationship magic
             created_by_id=user_id,
             cash_received=order_in.cash_received,
             change_amount=order_in.change_amount,
+            timezone=timezone_name,
+            business_date=business_date,
             discount_amount=order_in.discount_amount,
             discount_note=order_in.discount_note,
             shift_id=shift_id

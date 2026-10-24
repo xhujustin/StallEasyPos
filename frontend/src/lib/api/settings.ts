@@ -45,10 +45,9 @@ export const settingsApi = {
             receipt_header: result.data?.receipt_header || "",
             receipt_footer: result.data?.receipt_footer || "",
             business_id: result.data?.business_id || "",
-            tax_rate: result.data?.tax_rate || 5, // 預設 5%
+            tax_rate: result.data?.tax_rate ?? 5, // 預設 5%，允許設定 0%
             tax_mode: result.data?.tax_mode || "inclusive", // 預設含稅
             timezone: result.data?.timezone || "Asia/Taipei",
-            language: result.data?.language || "zh-TW",
             // 財務經營參數
             monthly_fixed_costs: result.data?.monthly_fixed_costs || [],
             business_days: result.data?.business_days || [1, 2, 3, 4, 5, 6, 0],
@@ -57,6 +56,8 @@ export const settingsApi = {
             // POS 營運自動化
             default_order_type: result.data?.default_order_type || "take_out",
             enabled_payment_methods: result.data?.enabled_payment_methods || ["cash"],
+            delivery_platforms: Array.isArray(result.data?.delivery_platforms) ? result.data.delivery_platforms : [],
+            multi_payment_methods: Array.isArray(result.data?.multi_payment_methods) ? result.data.multi_payment_methods : [],
             discount_presets: result.data?.discount_presets || [],
         };
     },
@@ -70,6 +71,7 @@ export const settingsApi = {
             printer_type: result.data?.printer_type || "network",
             printer_port: result.data?.printer_port || 9100,
             printer_usb_path: result.data?.printer_usb_path || "/dev/usb/lp0",
+            printers: Array.isArray(result.data?.printers) ? result.data.printers : [],
             paper_width: result.data?.paper_width || "57mm",
             auto_print_receipt: result.data?.auto_print_receipt || false,
             print_number_ticket: result.data?.print_number_ticket || false,
@@ -79,6 +81,7 @@ export const settingsApi = {
             pos_show_product_image: result.data?.pos_show_product_image ?? true,
             pos_show_cart_item_details: result.data?.pos_show_cart_item_details ?? true,
             pos_sound_enabled: result.data?.pos_sound_enabled ?? true,
+            scheduled_order_dispatch_lead_minutes: Number(result.data?.scheduled_order_dispatch_lead_minutes ?? 15),
         };
     },
 

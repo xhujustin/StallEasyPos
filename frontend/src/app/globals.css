@@ -121,6 +121,7 @@
 
   body {
     @apply bg-background text-foreground;
+    font-family: Inter, "Noto Sans TC", "Microsoft JhengHei", ui-sans-serif, system-ui, sans-serif;
   }
 }
 

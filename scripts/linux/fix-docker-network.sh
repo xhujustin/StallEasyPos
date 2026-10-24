@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 pause_on_exit() {
   local exit_code=$?
@@ -66,7 +66,7 @@ printf '[6/6] 重新建置並啟動 StallEasy POS...\n'
 cd "$PROJECT_DIR"
 "${DOCKER[@]}" compose build
 "${DOCKER[@]}" compose up -d
-DOCKER_CMD="${DOCKER[*]}" "$PROJECT_DIR/scripts/smoke-test.sh"
+DOCKER_CMD="${DOCKER[*]}" "$PROJECT_DIR/scripts/linux/smoke-test.sh"
 
 PI_IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
 printf '\nDocker 網路已修復，StallEasy POS 已啟動。\n'

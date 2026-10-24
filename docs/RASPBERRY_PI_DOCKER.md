@@ -7,8 +7,8 @@
 把專案複製或 clone 到 Pi 後，在專案根目錄執行：
 
 ```bash
-chmod +x scripts/*.sh
-./scripts/one-click-start.sh
+chmod +x scripts/linux/*.sh
+./scripts/linux/one-click-start.sh
 ```
 
 一鍵入口在首次執行時會檢查 64-bit ARM、安裝 Docker、產生資料庫與 JWT 隨機密鑰、建置容器、啟動服務並完成連線測試；後續執行則直接快速啟動。既有 `.env` 不會被覆寫。依原專案 `backend/scripts/setup_defaults.py` 建立的登入資料會保存在僅目前使用者可讀的 `.initial-credentials`。
@@ -17,22 +17,22 @@ chmod +x scripts/*.sh
 
 若使用 Onboard 螢幕鍵盤，POS Chromium 會在 labwc 桌面下以 XWayland/X11 模式執行，讓 Onboard 按鍵與 Fcitx5 Chewing 走相同輸入路徑。安裝腳本會加入 Chewing 與 GTK3 輸入模組。從 Fcitx5 圖示選「Chewing／新酷音」或按 `Ctrl+Space` 切換。Onboard 按鍵仍可能顯示英文字母，Chewing 會轉成注音候選字。PIN 維持唯讀，只使用頁面數字鍵盤。更新後必須關閉舊 Chromium 視窗並重新開啟，或直接重新開機。
 
-若 Onboard 日誌顯示 `not an X display` 或 `AT-SPI: Couldn't connect to accessibility bus`，執行 `./scripts/install-touch-input.sh` 補裝 AT-SPI，並改用 `./scripts/start-onboard.sh` 啟動；它會先關閉目前使用者的舊 Onboard 實例，再強制以 X11 啟動。不要同時從舊的 Onboard 桌面圖示啟動。重開機後一鍵啟動也會用此腳本自動開啟 Onboard。日誌在 `/tmp/stalleasy-onboard.log`。
+若 Onboard 日誌顯示 `not an X display` 或 `AT-SPI: Couldn't connect to accessibility bus`，執行 `./scripts/linux/install-touch-input.sh` 補裝 AT-SPI，並改用 `./scripts/linux/start-onboard.sh` 啟動；它會先關閉目前使用者的舊 Onboard 實例，再強制以 X11 啟動。不要同時從舊的 Onboard 桌面圖示啟動。重開機後一鍵啟動也會用此腳本自動開啟 Onboard。日誌在 `/tmp/stalleasy-onboard.log`。
 
-`install-touch-input.sh` 也會透過 Raspberry Pi OS 的 `raspi-config` 停用內建 Squeekboard 自動彈出，避免與 Onboard 重疊，並安裝 GPL-3.0 的 Onboard 注音鍵帽版面。Onboard 預設會直接顯示ㄅㄆㄇ等鍵帽，實際中文組字仍由你已配置的 Fcitx5 Chewing 處理。可點桌面 Fcitx5 圖示選「Chewing」，或在桌面終端執行 `./scripts/set-input-method.sh zhuyin`；切回英文用 `./scripts/set-input-method.sh english`。
+`install-touch-input.sh` 也會透過 Raspberry Pi OS 的 `raspi-config` 停用內建 Squeekboard 自動彈出，避免與 Onboard 重疊，並安裝 GPL-3.0 的 Onboard 注音鍵帽版面。Onboard 預設會直接顯示ㄅㄆㄇ等鍵帽，實際中文組字仍由你已配置的 Fcitx5 Chewing 處理。可點桌面 Fcitx5 圖示選「Chewing」，或在桌面終端執行 `./scripts/linux/set-input-method.sh zhuyin`；切回英文用 `./scripts/linux/set-input-method.sh english`。
 
 退出 kiosk 全螢幕通常可按 `Alt+F4`。若不希望自動開啟瀏覽器，可從終端執行：
 
 ```bash
-AUTO_OPEN_BROWSER=false ./scripts/one-click-start.sh
+AUTO_OPEN_BROWSER=false ./scripts/linux/one-click-start.sh
 ```
 
-系統管理員或店主可在「POS 本地設定」右上角按「安全關機」。按鈕會再次要求確認，然後透過受限制的 systemd 請求正常關閉 Raspberry Pi；員工帳號不會看到此按鈕。Docker 容器由 `stalleasy-pos.service` 在主機開機時啟動，桌面登入後則由 autostart 圖示自動開啟 kiosk。
+系統管理員或店主可在開班頁按「安全關機」。按鈕會再次要求確認，然後透過受限制的 systemd 請求正常關閉 Raspberry Pi；員工帳號不會看到此按鈕。Docker 容器由 `stalleasy-pos.service` 在主機開機時啟動，桌面登入後則由 `scripts/linux/open-on-login.sh` 自動開啟 kiosk。
 
 首次安裝完成後，日常啟動只需：
 
 ```bash
-./scripts/start.sh
+./scripts/linux/start.sh
 ```
 
 啟動腳本不會重新建置映像，會直接啟動既有容器、執行健康測試並顯示 POS 網址。Compose 服務已設定 `restart: unless-stopped`，因此正常重新開機後也會由 Docker 自動啟動。
@@ -42,7 +42,7 @@ AUTO_OPEN_BROWSER=false ./scripts/one-click-start.sh
 安全停止服務：
 
 ```bash
-./scripts/stop.sh
+./scripts/linux/stop.sh
 ```
 
 停止腳本使用 `docker compose stop`，不會刪除容器、資料庫或上傳檔。
@@ -144,7 +144,7 @@ docker compose ps
 若仍無法登入，執行：
 
 ```bash
-./scripts/repair-login.sh
+./scripts/linux/repair-login.sh
 ```
 
 此腳本會重新套用原始 `backend/scripts/setup_defaults.py`，並繞過前端直接驗證 `admin/000000` 與 `owner/111111` 的 API 登入結果。登入欄位請輸入英文字母 `admin` 或 `owner`，不是店名。
@@ -154,8 +154,8 @@ docker compose ps
 若拉取 `node:22-alpine` 等映像時出現 `dial tcp [IPv6位址]:443: connect: network is unreachable`，執行：
 
 ```bash
-chmod +x scripts/fix-docker-network.sh
-./scripts/fix-docker-network.sh
+chmod +x scripts/linux/fix-docker-network.sh
+./scripts/linux/fix-docker-network.sh
 ```
 
 腳本會先確認 Docker Hub 的 IPv4 連線正常，才停用故障的 IPv6 路徑、設定系統優先 IPv4，並讓 Docker daemon 使用系統 DNS 位址排序後重新建置。這同時處理 `network is unreachable` 與 `cannot assign requested address`。若 IPv4 也連不上，腳本不會改動 IPv6，請先處理 DNS、路由器或防火牆。

@@ -25,6 +25,7 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://stalleasy:${POSTGRES_PASSWORD}@db:5432/stalleasypos
       SECRET_KEY: ${SECRET_KEY:?請先在 .env 設定 SECRET_KEY}
+      ACCESS_TOKEN_EXPIRE_MINUTES: 0
       PROJECT_NAME: StallEasyPos
       API_V1_STR: /api/v1
       BACKEND_CORS_ORIGINS: '["http://localhost:3000"]'

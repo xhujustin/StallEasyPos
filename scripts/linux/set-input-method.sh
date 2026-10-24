@@ -15,7 +15,7 @@ case "${1:-}" in
 esac
 
 command -v fcitx5-remote >/dev/null 2>&1 || {
-  printf '找不到 fcitx5-remote，請先執行 ./scripts/install-touch-input.sh\n' >&2
+  printf '找不到 fcitx5-remote，請先執行 ./scripts/linux/install-touch-input.sh\n' >&2
   exit 1
 }
 

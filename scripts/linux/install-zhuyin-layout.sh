@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SOURCE_DIR="$PROJECT_DIR/assets/onboard-zhuyin"
 LAYOUT_DIR="$HOME/.local/share/onboard/layouts"
 mkdir -p "$LAYOUT_DIR"

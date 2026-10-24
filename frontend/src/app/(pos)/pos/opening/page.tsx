@@ -4,7 +4,8 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { shiftApi } from '@/lib/api/shifts';
-import { Calculator, Delete, Equal, Coins } from 'lucide-react';
+import { settingsApi } from '@/lib/api/settings';
+import { Calculator, Delete, Equal, Coins, Settings, Power } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -13,11 +14,29 @@ import { toast } from 'sonner';
 
 export default function ShiftOpeningPage() {
     const router = useRouter();
-    const { selectedStoreId } = useAuthStore();
+    const { user, selectedStoreId } = useAuthStore();
+    const canShutdown = Boolean(
+        user?.is_admin || user?.stores?.some(
+            (store) => store.id === selectedStoreId && store.user_role === 'owner'
+        )
+    );
     const [displayValue, setDisplayValue] = useState<string>('');
     const [isLoading, setIsLoading] = useState(false);
     const [drawerLoading, setDrawerLoading] = useState(false);
+    const [shuttingDown, setShuttingDown] = useState(false);
+    const [isLocalAccess, setIsLocalAccess] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const showShutdown = canShutdown && isLocalAccess;
+
+    useEffect(() => {
+        const hostname = window.location.hostname.toLowerCase();
+        setIsLocalAccess(
+            hostname === 'localhost' ||
+            hostname === '127.0.0.1' ||
+            hostname === '::1' ||
+            hostname === '[::1]'
+        );
+    }, []);
 
     // Calculator Logic
     const handleInput = (val: string) => {
@@ -46,6 +65,19 @@ export default function ShiftOpeningPage() {
             toast.error('錢箱開啟失敗，請檢查出單機連線');
         } finally {
             setDrawerLoading(false);
+        }
+    };
+
+    const handleShutdown = async () => {
+        if (!selectedStoreId) return;
+        if (!window.confirm('確定要安全關閉 Raspberry Pi 嗎？所有 POS 裝置將中斷連線。')) return;
+        try {
+            setShuttingDown(true);
+            await settingsApi.shutdownHost(selectedStoreId);
+            toast.success('已送出安全關機指令，系統將在數秒內關閉');
+        } catch (error: any) {
+            toast.error(error.response?.data?.detail || '關機失敗，請確認目前帳號權限與主機設定');
+            setShuttingDown(false);
         }
     };
 
@@ -214,7 +246,26 @@ export default function ShiftOpeningPage() {
                         <Button variant="outline" className="h-full text-2xl font-bold text-slate-700 bg-white hover:bg-blue-50 hover:text-blue-600 border-slate-200 rounded-xl" onClick={() => handleInput('.')}>.</Button>
                     </div>
 
-                    <div className="grid grid-cols-3 gap-3">
+                    <div className={`grid gap-3 ${showShutdown ? 'grid-cols-3' : 'grid-cols-2'}`}>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => router.push('/pos/settings')}
+                            className="h-16 text-base font-bold border-2 border-slate-300 bg-white rounded-xl"
+                        >
+                            <Settings className="mr-2 h-5 w-5" /> 設備設定
+                        </Button>
+                        {showShutdown && (
+                            <Button
+                                type="button"
+                                variant="outline"
+                                onClick={handleShutdown}
+                                disabled={shuttingDown}
+                                className="h-16 text-base font-bold border-2 border-red-200 bg-white text-red-600 hover:bg-red-50 hover:text-red-700 rounded-xl"
+                            >
+                                <Power className="mr-2 h-5 w-5" /> {shuttingDown ? '關機中…' : '安全關機'}
+                            </Button>
+                        )}
                         <Button
                             type="button"
                             variant="outline"
@@ -227,7 +278,7 @@ export default function ShiftOpeningPage() {
                         <Button
                             onClick={handleSubmit}
                             disabled={isLoading || !displayValue}
-                            className="col-span-2 h-16 text-xl font-bold bg-[#D4AF37] hover:bg-[#C5A028] text-white shadow-md rounded-xl transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="col-span-full h-16 text-xl font-bold bg-[#D4AF37] hover:bg-[#C5A028] text-white shadow-md rounded-xl transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             {isLoading ? (
                                 <span className="flex items-center gap-2">

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 DOCKER_CMD="${DOCKER_CMD:-docker}"
 read -r -a DOCKER <<< "$DOCKER_CMD"
 MAX_ATTEMPTS="${MAX_ATTEMPTS:-30}"

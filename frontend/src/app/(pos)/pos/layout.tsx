@@ -29,8 +29,11 @@ export default function POSLayout({
             try {
                 const shift = await shiftApi.getCurrent(selectedStoreId);
                 const isOpeningPage = pathname === '/pos/opening';
+                // Device settings must remain available before a shift starts so
+                // staff can configure and test the POS hardware first.
+                const isPreShiftPage = isOpeningPage || pathname === '/pos/settings';
 
-                if (!shift && !isOpeningPage) {
+                if (!shift && !isPreShiftPage) {
                     router.replace('/pos/opening');
                 } else if (shift && isOpeningPage) {
                     router.replace('/pos');

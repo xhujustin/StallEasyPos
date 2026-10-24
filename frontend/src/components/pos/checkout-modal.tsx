@@ -20,7 +20,7 @@ interface CheckoutModalProps {
 
 
 export function CheckoutModal({ open, onClose }: CheckoutModalProps) {
-    const { totalAmount, clearCart, items, currentOrderNo } = useCartStore();
+    const { totalAmount, clearCart, items, currentOrderNo, currentPrintedOutputs = [] } = useCartStore();
     const { selectedStoreId, user } = useAuthStore();
     const storeId = selectedStoreId || user?.stores?.[0]?.id;
 
@@ -32,7 +32,13 @@ export function CheckoutModal({ open, onClose }: CheckoutModalProps) {
     const [roundingRule, setRoundingRule] = useState('round');
     const [orderType, setOrderType] = useState<OrderType>(OrderType.TAKE_OUT);
     const [serviceFeeRate, setServiceFeeRate] = useState(0);
+    const [taxRate, setTaxRate] = useState(5);
+    const [taxMode, setTaxMode] = useState<'inclusive' | 'exclusive'>('inclusive');
     const [paymentMethods, setPaymentMethods] = useState<string[]>(['cash']);
+    const [deliveryPlatforms, setDeliveryPlatforms] = useState<{ id: string, name: string, color: string, enabled: boolean }[]>([]);
+    const [multiPaymentMethods, setMultiPaymentMethods] = useState<{ id: string, name: string, color: string, enabled: boolean }[]>([]);
+    const [selectedDeliveryPlatform, setSelectedDeliveryPlatform] = useState('');
+    const [selectedPaymentProvider, setSelectedPaymentProvider] = useState('');
     const [discountPresets, setDiscountPresets] = useState<any[]>([]);
     const [selectedDiscount, setSelectedDiscount] = useState<any | null>(null);
     const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<PaymentMethod>(PaymentMethod.CASH);
@@ -60,8 +66,17 @@ export function CheckoutModal({ open, onClose }: CheckoutModalProps) {
         }
     }
 
-    const finalTotalBeforeRounding = subtotalValue + serviceFeeValue - discountValue;
+    const taxableAmount = Math.max(0, subtotalValue + serviceFeeValue - discountValue);
+    const taxValue = taxMode === 'inclusive'
+        ? (taxRate > 0 ? taxableAmount - taxableAmount / (1 + taxRate / 100) : 0)
+        : taxableAmount * taxRate / 100;
+    const finalTotalBeforeRounding = taxableAmount + (taxMode === 'exclusive' ? taxValue : 0);
     const roundedTotal = applyRounding(Math.max(0, finalTotalBeforeRounding), roundingRule);
+    const paymentSelectionValid = orderType === OrderType.DELIVERY
+        ? Boolean(selectedDeliveryPlatform)
+        : selectedPaymentMethod === PaymentMethod.CASH
+            ? paymentMethods.includes('cash')
+            : selectedPaymentMethod === PaymentMethod.LINEPAY && Boolean(selectedPaymentProvider);
 
     useEffect(() => {
         if (open && selectedPaymentMethod === PaymentMethod.LINEPAY) {
@@ -75,15 +90,21 @@ export function CheckoutModal({ open, onClose }: CheckoutModalProps) {
                 if (profile.rounding_rule) {
                     setRoundingRule(profile.rounding_rule);
                 }
-                if (profile.default_order_type) {
-                    setOrderType(profile.default_order_type as OrderType);
-                }
+                const enabledMethods = profile.enabled_payment_methods || ['cash'];
+                const configuredOrderType = profile.default_order_type as OrderType;
+                setOrderType(
+                    configuredOrderType === OrderType.DELIVERY && !enabledMethods.includes('platform_collect')
+                        ? OrderType.TAKE_OUT
+                        : configuredOrderType || OrderType.TAKE_OUT
+                );
                 if (profile.default_service_fee_rate !== undefined) {
                     setServiceFeeRate(profile.default_service_fee_rate);
                 }
-                if (profile.enabled_payment_methods) {
-                    setPaymentMethods(profile.enabled_payment_methods);
-                }
+                setTaxRate(Number(profile.tax_rate ?? 5));
+                setTaxMode(profile.tax_mode === 'exclusive' ? 'exclusive' : 'inclusive');
+                setPaymentMethods(enabledMethods);
+                setDeliveryPlatforms(profile.delivery_platforms || []);
+                setMultiPaymentMethods(profile.multi_payment_methods || []);
                 if (profile.discount_presets) {
                     setDiscountPresets(profile.discount_presets);
                 }
@@ -96,6 +117,14 @@ export function CheckoutModal({ open, onClose }: CheckoutModalProps) {
     const handleCheckout = async () => {
         if (!storeId) {
             alert("未選擇店鋪，無法結帳");
+            return;
+        }
+        if (orderType === OrderType.DELIVERY && !selectedDeliveryPlatform) {
+            alert('請選擇外送平台');
+            return;
+        }
+        if (!paymentSelectionValid) {
+            alert('請選擇支付方式');
             return;
         }
 
@@ -114,9 +143,14 @@ export function CheckoutModal({ open, onClose }: CheckoutModalProps) {
                     subtotal: subtotalValue,
                     service_fee: serviceFeeValue,
                     service_fee_rate: currentServiceFeeRate,
+                    tax_rate: taxRate,
+                    tax_mode: taxMode,
+                    tax_amount: taxValue,
                     order_type: orderType,
                     payment_method: selectedPaymentMethod,
-                    source: OrderSource.POS,
+                    delivery_platform: orderType === OrderType.DELIVERY ? selectedDeliveryPlatform : undefined,
+                    payment_provider: orderType !== OrderType.DELIVERY ? selectedPaymentProvider || undefined : undefined,
+                    source: orderType === OrderType.DELIVERY ? OrderSource.DELIVERY : OrderSource.POS,
                     cash_received: received,
                     change_amount: received - roundedTotal,
                     discount_amount: discountValue,
@@ -148,15 +182,25 @@ export function CheckoutModal({ open, onClose }: CheckoutModalProps) {
                         settingsApi.getDeviceSettings(storeId),
                         settingsApi.getStoreProfile(storeId),
                     ]);
-                    if (selectedPaymentMethod === PaymentMethod.CASH && device.open_cash_drawer) {
+                    const configuredPrinters = Array.isArray(device.printers) ? device.printers.filter((printer: any) => printer.enabled !== false) : [];
+                    const hasOutput = (output: string) => configuredPrinters.some((printer: any) =>
+                        Array.isArray(printer.outputs) && printer.outputs.includes(output)
+                    );
+                    if (selectedPaymentMethod === PaymentMethod.CASH && (configuredPrinters.length ? hasOutput('drawer') : device.open_cash_drawer)) {
                         await hardwareApi.openDrawer(storeId);
                     }
                     // Number ticket comes out first, followed by the customer's receipt.
-                    if (device.print_number_ticket && order) {
+                    if (!currentPrintedOutputs.includes('number_ticket') && (configuredPrinters.length ? hasOutput('number_ticket') : device.print_number_ticket) && order) {
                         await hardwareApi.printNumberTicket(storeId, order, profile.store_name);
                     }
-                    if (device.auto_print_receipt && order) {
+                    if (!currentPrintedOutputs.includes('receipt') && (configuredPrinters.length ? hasOutput('receipt') : device.auto_print_receipt) && order) {
                         await hardwareApi.printOrder(storeId, order, profile.store_name);
+                    }
+                    if (!currentPrintedOutputs.includes('kitchen') && configuredPrinters.length && hasOutput('kitchen') && order) {
+                        await hardwareApi.printKitchen(storeId, order, profile.store_name);
+                    }
+                    if (!currentPrintedOutputs.includes('label') && configuredPrinters.length && hasOutput('label') && order) {
+                        await hardwareApi.printLabels(storeId, order, profile.store_name);
                     }
                 } catch (hardwareError) {
                     console.error('Hardware command failed:', hardwareError);
@@ -203,6 +247,8 @@ export function CheckoutModal({ open, onClose }: CheckoutModalProps) {
         setIsCompleted(false);
         setIsLoading(false);
         setChange(0);
+        setSelectedDeliveryPlatform('');
+        setSelectedPaymentProvider('');
         onClose();
     };
 
@@ -290,40 +336,57 @@ export function CheckoutModal({ open, onClose }: CheckoutModalProps) {
             <DialogContent className="sm:max-w-[800px] p-0 gap-0 bg-white overflow-hidden flex h-[600px]">
                 <DialogTitle className="sr-only">結帳收款</DialogTitle>
                 {/* Left: Summary */}
-                <div className="w-1/2 bg-slate-50 p-6 border-r border-slate-200 flex flex-col">
-                    <div className="flex items-center justify-between mb-6">
+                <div className="w-1/2 bg-slate-50 border-r border-slate-200 flex min-h-0 flex-col">
+                    <div className="min-h-0 flex-1 overflow-y-auto p-5 pb-3">
+                    <div className="flex items-center justify-between mb-3">
                         <h2 className="text-xl font-bold text-slate-900">結帳金額</h2>
                         <div className="text-3xl font-bold text-[#D4AF37] font-mono">${roundedTotal}</div>
                     </div>
 
-                    <div className="space-y-4 mb-6">
-                        <div className="text-sm font-medium text-slate-500 mb-2">訂單類型</div>
-                        <div className="grid grid-cols-3 gap-2">
+                    <div className="space-y-2 mb-3">
+                        <div className="text-sm font-medium text-slate-500 mb-1">訂單類型</div>
+                        <div className={`grid gap-2 ${paymentMethods.includes('platform_collect') ? 'grid-cols-3' : 'grid-cols-2'}`}>
                             <Button
                                 variant={orderType === OrderType.DINE_IN ? 'default' : 'outline'}
-                                onClick={() => setOrderType(OrderType.DINE_IN)}
+                                onClick={() => {
+                                    setOrderType(OrderType.DINE_IN);
+                                    setSelectedPaymentMethod(PaymentMethod.CASH);
+                                    setSelectedPaymentProvider('');
+                                    setCashReceived('');
+                                }}
                                 className="h-10 border-slate-300 transition-all font-bold"
                             >
                                 內用
                             </Button>
                             <Button
                                 variant={orderType === OrderType.TAKE_OUT ? 'default' : 'outline'}
-                                onClick={() => setOrderType(OrderType.TAKE_OUT)}
+                                onClick={() => {
+                                    setOrderType(OrderType.TAKE_OUT);
+                                    setSelectedPaymentMethod(PaymentMethod.CASH);
+                                    setSelectedPaymentProvider('');
+                                    setCashReceived('');
+                                }}
                                 className="h-10 border-slate-300 transition-all font-bold"
                             >
                                 外帶
                             </Button>
-                            <Button
-                                variant={orderType === OrderType.DELIVERY ? 'default' : 'outline'}
-                                onClick={() => setOrderType(OrderType.DELIVERY)}
-                                className="h-10 border-slate-300 transition-all font-bold"
-                            >
-                                外送
-                            </Button>
+                            {paymentMethods.includes('platform_collect') && (
+                                <Button
+                                    variant={orderType === OrderType.DELIVERY ? 'default' : 'outline'}
+                                    onClick={() => {
+                                        setOrderType(OrderType.DELIVERY);
+                                        setSelectedPaymentMethod(PaymentMethod.PLATFORM_COLLECT);
+                                        setCashReceived(roundedTotal.toString());
+                                    }}
+                                    className="h-10 border-slate-300 transition-all font-bold"
+                                >
+                                    外送
+                                </Button>
+                            )}
                         </div>
                     </div>
 
-                    <div className="space-y-4 mb-6">
+                    <div className="space-y-2 mb-3">
                         <div className="flex items-center justify-between">
                             <div className="text-sm font-medium text-slate-500">服務費率 (%)</div>
                             <div className="flex items-center gap-1">
@@ -337,46 +400,71 @@ export function CheckoutModal({ open, onClose }: CheckoutModalProps) {
                         </div>
                     </div>
 
-                    <div className="space-y-4 mb-6">
-                        <div className="text-sm font-medium text-slate-500 mb-2">支付方式</div>
-                        <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-2 mb-3">
+                        <div className="text-sm font-medium text-slate-500 mb-1">
+                            {orderType === OrderType.DELIVERY ? '外送平台' : '支付方式'}
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                            {orderType === OrderType.DELIVERY ? (
+                                deliveryPlatforms.filter(platform => platform.enabled !== false && platform.name.trim()).map((platform) => (
+                                    <Button
+                                        key={platform.id}
+                                        variant="outline"
+                                        className={cn("h-12 font-bold transition-colors", selectedDeliveryPlatform === platform.name ? "text-white shadow-sm" : "bg-transparent")}
+                                        style={selectedDeliveryPlatform === platform.name
+                                            ? { backgroundColor: platform.color || '#f97316', borderColor: platform.color || '#f97316', color: '#ffffff', outline: `2px solid ${platform.color || '#f97316'}`, outlineOffset: '2px' }
+                                            : { borderColor: platform.color || '#f97316', color: platform.color || '#f97316' }}
+                                        onClick={() => {
+                                            setSelectedDeliveryPlatform(platform.name);
+                                            setSelectedPaymentMethod(PaymentMethod.PLATFORM_COLLECT);
+                                            setCashReceived(roundedTotal.toString());
+                                        }}
+                                    >
+                                        {platform.name}
+                                    </Button>
+                                ))
+                            ) : <>
                             {paymentMethods.includes('cash') && (
                                 <Button
                                     variant={selectedPaymentMethod === PaymentMethod.CASH ? 'default' : 'outline'}
                                     className={cn("h-12 font-bold", selectedPaymentMethod === PaymentMethod.CASH ? "bg-slate-900 text-white" : "border-slate-300")}
-                                    onClick={() => setSelectedPaymentMethod(PaymentMethod.CASH)}
+                                    onClick={() => {
+                                        setSelectedPaymentMethod(PaymentMethod.CASH);
+                                        setSelectedPaymentProvider('');
+                                        setCashReceived('');
+                                    }}
                                 >
                                     現金支付
                                 </Button>
                             )}
-                            {paymentMethods.includes('linepay') && (
+                            {paymentMethods.includes('linepay') && multiPaymentMethods.filter(method => method.enabled !== false && method.name.trim()).map((method) => (
                                 <Button
-                                    variant={selectedPaymentMethod === PaymentMethod.LINEPAY ? 'default' : 'outline'}
-                                    className={cn("h-12 font-bold", selectedPaymentMethod === PaymentMethod.LINEPAY ? "bg-green-600 text-white hover:bg-green-700 border-green-200" : "border-slate-300")}
+                                    key={method.id}
+                                    variant="outline"
+                                    className={cn("h-12 font-bold transition-colors", selectedPaymentProvider === method.name ? "text-white shadow-sm" : "bg-transparent")}
+                                    style={selectedPaymentProvider === method.name
+                                        ? { backgroundColor: method.color || '#16a34a', borderColor: method.color || '#16a34a', color: '#ffffff', outline: `2px solid ${method.color || '#16a34a'}`, outlineOffset: '2px' }
+                                        : { borderColor: method.color || '#16a34a', color: method.color || '#16a34a' }}
                                     onClick={() => {
                                         setSelectedPaymentMethod(PaymentMethod.LINEPAY);
+                                        setSelectedPaymentProvider(method.name);
                                         setCashReceived(roundedTotal.toString());
                                     }}
                                 >
-                                    Line Pay
+                                    {method.name}
                                 </Button>
-                            )}
-                            {paymentMethods.includes('platform_collect') && (
-                                <Button
-                                    variant={selectedPaymentMethod === PaymentMethod.PLATFORM_COLLECT ? 'default' : 'outline'}
-                                    className={cn("h-12 font-bold", selectedPaymentMethod === PaymentMethod.PLATFORM_COLLECT ? "bg-orange-500 text-white hover:bg-orange-600 border-orange-200" : "border-slate-300")}
-                                    onClick={() => setSelectedPaymentMethod(PaymentMethod.PLATFORM_COLLECT)}
-                                >
-                                    平台代收
-                                </Button>
-                            )}
+                            ))}
+                            </>}
                         </div>
+                        {orderType === OrderType.DELIVERY && deliveryPlatforms.filter(platform => platform.enabled !== false && platform.name.trim()).length === 0 && (
+                            <p className="text-xs text-red-500">請先至系統設定新增外送平台</p>
+                        )}
                     </div>
 
                     {/* Discount Selection */}
                     {discountPresets.length > 0 && (
-                        <div className="space-y-4 mb-6">
-                            <div className="text-sm font-medium text-slate-500 mb-2">優惠折扣</div>
+                        <div className="space-y-2 mb-3">
+                            <div className="text-sm font-medium text-slate-500 mb-1">優惠折扣</div>
                             <div className="flex flex-wrap gap-2">
                                 <Button
                                     variant={!selectedDiscount ? 'secondary' : 'outline'}
@@ -404,8 +492,9 @@ export function CheckoutModal({ open, onClose }: CheckoutModalProps) {
                         </div>
                     )}
 
-                    <div className="mt-auto">
-                        <div className="bg-white p-4 rounded-lg border border-slate-200 mb-4">
+                    </div>
+                    <div className="shrink-0 border-t border-slate-200 bg-slate-50 p-4">
+                        <div className="bg-white p-4 rounded-lg border border-slate-200">
                             <div className="flex justify-between items-center text-sm text-slate-500">
                                 <span>商品小計</span>
                                 <span className="font-mono">${subtotalValue}</span>
@@ -420,6 +509,10 @@ export function CheckoutModal({ open, onClose }: CheckoutModalProps) {
                                     <span className="font-mono text-green-600">-${discountValue}</span>
                                 </div>
                             )}
+                            <div className="flex justify-between items-center text-sm text-slate-500">
+                                <span>營業稅 ({taxRate}%{taxMode === 'inclusive' ? '・內含' : '・外加'})</span>
+                                <span className="font-mono">{taxMode === 'exclusive' ? '+' : ''}${Math.round(taxValue)}</span>
+                            </div>
                             <div className="flex justify-between items-center text-lg font-bold text-slate-900 mt-2 pt-2 border-t border-slate-100 italic">
                                 <span>應收 (已進位)</span>
                                 <span className="font-mono text-2xl text-[#D4AF37]">
@@ -439,7 +532,7 @@ export function CheckoutModal({ open, onClose }: CheckoutModalProps) {
                                 </span>
                             </div>
                         </div>
-                    </div>
+                </div>
                 </div>
 
                 {/* Right: Keypad */}
@@ -510,7 +603,7 @@ export function CheckoutModal({ open, onClose }: CheckoutModalProps) {
                             <Button
                                 className="h-16 text-xl font-bold bg-[#D4AF37] hover:bg-[#C5A028] text-white shadow-md transition-all active:scale-95"
                                 onClick={handleCheckout}
-                                disabled={(parseInt(cashReceived) || 0) < roundedTotal || isLoading}
+                                disabled={(parseInt(cashReceived) || 0) < roundedTotal || isLoading || !paymentSelectionValid}
                             >
                                 {isLoading ? '處理中...' : '結帳 (Enter)'}
                             </Button>

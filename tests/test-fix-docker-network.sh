@@ -6,9 +6,9 @@ trap 'rm -rf "$TEST_ROOT"' EXIT
 FIXTURE="$TEST_ROOT/project"
 MOCK_BIN="$TEST_ROOT/bin"
 CALL_LOG="$TEST_ROOT/calls"
-mkdir -p "$FIXTURE/scripts" "$MOCK_BIN"
+mkdir -p "$FIXTURE/scripts/linux" "$MOCK_BIN"
 
-cp scripts/fix-docker-network.sh scripts/smoke-test.sh "$FIXTURE/scripts/"
+cp scripts/linux/fix-docker-network.sh scripts/linux/smoke-test.sh "$FIXTURE/scripts/linux/"
 cp compose.yaml "$FIXTURE/"
 printf 'SECRET_KEY=test\n' > "$FIXTURE/.env"
 
@@ -23,7 +23,7 @@ make_mock docker "printf 'docker %s\\n' \"\$*\" >> '$CALL_LOG'; exit 0"
 make_mock sudo "printf 'sudo %s\\n' \"\$*\" >> '$CALL_LOG'; exit 0"
 make_mock hostname 'printf "192.168.1.50 \n"'
 
-OUTPUT="$(PATH="$MOCK_BIN:$PATH" "$FIXTURE/scripts/fix-docker-network.sh")"
+OUTPUT="$(PATH="$MOCK_BIN:$PATH" "$FIXTURE/scripts/linux/fix-docker-network.sh")"
 grep -q 'docker pull node:22-alpine' "$CALL_LOG"
 grep -q 'docker compose build' "$CALL_LOG"
 grep -q 'sudo systemctl daemon-reload' "$CALL_LOG"

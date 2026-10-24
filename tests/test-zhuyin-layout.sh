@@ -4,7 +4,7 @@ set -Eeuo pipefail
 TEST_ROOT="$(mktemp -d)"
 export TEST_ROOT
 trap 'rm -rf "$TEST_ROOT"' EXIT
-HOME="$TEST_ROOT" scripts/install-zhuyin-layout.sh >/dev/null
+HOME="$TEST_ROOT" scripts/linux/install-zhuyin-layout.sh >/dev/null
 LAYOUT_DIR="$TEST_ROOT/.local/share/onboard/layouts"
 
 for name in zhuyin.onboard zhuyin-Alpha.svg zhuyin-Numbers.svg zhuyin-Utils.svg; do

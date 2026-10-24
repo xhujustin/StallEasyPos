@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
-import { Store, FileText, DollarSign, Settings, LogOut, LayoutDashboard } from 'lucide-react';
+import { Store, FileText, DollarSign, LogOut, LayoutDashboard, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useCartStore } from '@/lib/store/cart-store';
 import { useAuthStore } from '@/lib/store/auth-store';

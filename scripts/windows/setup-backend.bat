@@ -1,5 +1,5 @@
 @echo off
-cd /d %~dp0
+cd /d "%~dp0..\..\backend"
 
 if not exist ".env" (
     echo Copying .env.example to .env...

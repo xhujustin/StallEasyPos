@@ -7,6 +7,7 @@ from app.models.order import Order, OrderItem, OrderStatus
 from app.models.product import Product
 from app.schemas.dashboard import DashboardStats, DailyMetric, TopProduct
 from app.services.store_service import StoreService
+from app.services.store_clock import get_store_clock
 
 class DashboardService:
     @staticmethod
@@ -14,7 +15,7 @@ class DashboardService:
         # Check permission
         await StoreService.get_store_if_authorized(db, store_id, user_id)
         
-        today = date.today()
+        _, today = await get_store_clock(db, store_id)
         yesterday = today - timedelta(days=1)
         seven_days_ago = today - timedelta(days=6)
 

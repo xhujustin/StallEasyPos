@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { settingsApi, SettingScope } from '@/lib/api/settings';
@@ -48,6 +48,39 @@ function useDebounce<T>(value: T, delay: number): T {
     return debouncedValue;
 }
 
+type ConfigurableChannel = { id: string; name: string; color: string; enabled: boolean };
+
+type ChannelSettingsCardProps = {
+    title: string; description: string; enabled: boolean; expanded: boolean;
+    items: ConfigurableChannel[]; placeholder: string; icon: ReactNode;
+    onToggle: () => void; onAdd: () => void; onChange: (items: ConfigurableChannel[]) => void;
+};
+
+function ChannelSettingsCard({ title, description, enabled, expanded, items, placeholder, icon, onToggle, onAdd, onChange }: ChannelSettingsCardProps) {
+    const updateItem = (id: string, patch: Partial<ConfigurableChannel>) => onChange(items.map(item => item.id === id ? { ...item, ...patch } : item));
+    return (
+        <div className={cn("bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden", !enabled && "opacity-60")}>
+            <button type="button" onClick={onToggle} className="w-full px-6 py-4 bg-gray-50/80 border-b border-gray-100 flex items-center justify-between text-left">
+                <div className="flex items-center gap-3">{icon}<div><h3 className="font-black text-gray-800 tracking-tight">{title}</h3><p className="text-[11px] text-gray-400 mt-0.5">{description}</p></div></div>
+                <ChevronDown size={18} className={cn("shrink-0 text-gray-400 transition-transform", expanded && "rotate-180")} />
+            </button>
+            {expanded && <div className="p-6 space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                    {!enabled ? <p className="text-sm text-amber-600">請先在「支付管道管理」開啟此功能。</p> : <span />}
+                    <Button variant="outline" size="sm" onClick={onAdd} disabled={!enabled}><Plus size={14} className="mr-1" /> 新增項目</Button>
+                </div>
+                {items.length === 0 && enabled && <p className="text-sm text-gray-400">尚未新增項目</p>}
+                {items.map(item => <div key={item.id} className="grid grid-cols-1 xl:grid-cols-[minmax(160px,1fr)_140px_90px_44px] items-center gap-3 rounded-xl border border-gray-100 bg-gray-50/60 p-3">
+                    <Input value={item.name} placeholder={placeholder} disabled={!enabled} onChange={(e) => updateItem(item.id, { name: e.target.value })} />
+                    <label className="flex h-10 items-center gap-2 rounded-md border bg-white px-2 text-xs font-bold text-gray-500"><input type="color" value={item.color} disabled={!enabled} onChange={(e) => updateItem(item.id, { color: e.target.value })} className="h-7 w-8 cursor-pointer border-0 bg-transparent" />按鈕色彩</label>
+                    <button type="button" disabled={!enabled} onClick={() => updateItem(item.id, { enabled: !item.enabled })} className={cn("h-9 rounded-lg text-xs font-black text-white", item.enabled ? "bg-emerald-500" : "bg-gray-300")}>{item.enabled ? '已開啟' : '已關閉'}</button>
+                    <Button variant="ghost" size="icon" className="text-red-500" disabled={!enabled} onClick={() => onChange(items.filter(current => current.id !== item.id))}><Trash2 size={16} /></Button>
+                </div>)}
+            </div>}
+        </div>
+    );
+}
+
 export default function AdminSettingsPage() {
     const router = useRouter();
     const { user, selectedStoreId, updateUser, updateStore } = useAuthStore();
@@ -57,6 +90,7 @@ export default function AdminSettingsPage() {
     const [lastSynced, setLastSynced] = useState<Date | null>(null);
     const [uploadingLogo, setUploadingLogo] = useState(false);
     const [syncError, setSyncError] = useState('');
+    const [expandedChannelSettings, setExpandedChannelSettings] = useState<Record<string, boolean>>({});
 
     // 設定狀態
     const [settings, setSettings] = useState({
@@ -69,7 +103,6 @@ export default function AdminSettingsPage() {
         tax_rate: 5,
         tax_mode: 'inclusive',
         timezone: 'Asia/Taipei',
-        language: 'zh-TW',
         // 財務經營參數
         monthly_fixed_costs: [] as { id: string, name: string, amount: number }[],
         business_days: [1, 2, 3, 4, 5, 6, 0] as number[],
@@ -79,6 +112,8 @@ export default function AdminSettingsPage() {
         default_order_type: 'take_out',
         // 營運進階設定
         enabled_payment_methods: ['cash'] as string[],
+        delivery_platforms: [] as ConfigurableChannel[],
+        multi_payment_methods: [] as ConfigurableChannel[],
         discount_presets: [] as { id: string, name: string, type: 'percent' | 'fixed', value: number }[],
     });
 
@@ -136,6 +171,16 @@ export default function AdminSettingsPage() {
                 default_service_fee_rate: settingsData.default_service_fee_rate || 0,
                 default_order_type: settingsData.default_order_type || 'take_out',
                 enabled_payment_methods: settingsData.enabled_payment_methods || ['cash'],
+                delivery_platforms: (settingsData.delivery_platforms || []).map((item: any) => ({
+                    ...item,
+                    color: item.color || '#f97316',
+                    enabled: item.enabled !== false,
+                })),
+                multi_payment_methods: (settingsData.multi_payment_methods || []).map((item: any) => ({
+                    ...item,
+                    color: item.color || '#16a34a',
+                    enabled: item.enabled !== false,
+                })),
                 discount_presets: settingsData.discount_presets || [],
             });
             if (userData.data) {
@@ -195,9 +240,11 @@ export default function AdminSettingsPage() {
     // 自動同步個人資料
     useEffect(() => {
         if (isInitialLoad || loading) return;
+        if (debouncedProfile.pin && (debouncedProfile.pin.length < 6 || debouncedProfile.pin.length > 8 || !debouncedProfile.old_pin)) return;
 
         const syncProfile = async () => {
             setSyncing(true);
+            setSyncError('');
             try {
                 await userApi.updateProfile({
                     username: debouncedProfile.username,
@@ -216,8 +263,12 @@ export default function AdminSettingsPage() {
                     phone: debouncedProfile.phone,
                 });
                 setLastSynced(new Date());
-            } catch (error) {
+                if (debouncedProfile.pin) {
+                    setProfile(current => ({ ...current, pin: '', old_pin: '' }));
+                }
+            } catch (error: any) {
                 console.error('個人資料同步失敗:', error);
+                setSyncError(error.response?.data?.detail || error.message || '個人資料同步失敗');
             } finally {
                 setSyncing(false);
             }
@@ -294,6 +345,42 @@ export default function AdminSettingsPage() {
         if (next.length === 0) return;
 
         setSettings({ ...settings, enabled_payment_methods: next });
+    };
+
+    const handleAddDeliveryPlatform = () => {
+        setSettings({
+            ...settings,
+            delivery_platforms: [
+                ...settings.delivery_platforms,
+                { id: crypto.randomUUID?.() || Math.random().toString(36).slice(2), name: '', color: '#f97316', enabled: true }
+            ]
+        });
+    };
+
+    const handleAddMultiPaymentMethod = () => {
+        setSettings({
+            ...settings,
+            multi_payment_methods: [
+                ...settings.multi_payment_methods,
+                { id: crypto.randomUUID?.() || Math.random().toString(36).slice(2), name: '', color: '#16a34a', enabled: true }
+            ]
+        });
+    };
+
+    const handleDeleteStore = async () => {
+        if (!selectedStoreId) return;
+        const confirmation = window.prompt(`刪除店鋪會永久移除相關設定與資料。\n請輸入店鋪名稱「${settings.store_name}」確認：`);
+        if (confirmation !== settings.store_name) {
+            if (confirmation !== null) alert('店鋪名稱不相符，已取消刪除');
+            return;
+        }
+        try {
+            await storeApi.delete(selectedStoreId);
+            useAuthStore.getState().setSelectedStore(null as any);
+            window.location.href = '/select-store';
+        } catch (error: any) {
+            alert(error.response?.data?.detail || '刪除店鋪失敗');
+        }
     };
 
     // 折扣範本邏輯
@@ -629,6 +716,75 @@ export default function AdminSettingsPage() {
                             </div>
                         </div>
                     </div>
+
+                    {/* Payment Management Card */}
+                    <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden mt-6">
+                        <div className="px-6 py-4 bg-gray-50/80 border-b border-gray-100 flex items-center gap-3">
+                            <CreditCard size={18} className="text-[#D4AF37]" />
+                            <h3 className="font-black text-gray-800 tracking-tight">支付管道管理</h3>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            <p className="text-[11px] text-gray-400 font-medium mb-4">設定 POS 結帳畫面顯示的支付按鈕</p>
+                            <div className="grid grid-cols-1 gap-3">
+                                {[
+                                    { id: 'cash', name: '現金結帳', icon: <Coins size={16} /> },
+                                    { id: 'linepay', name: '多元支付', icon: <Wallet size={16} /> },
+                                    { id: 'platform_collect', name: '啟用外送平台', icon: <ShoppingCart size={16} /> }
+                                ].map((method) => (
+                                    <div
+                                        key={method.id}
+                                        className={cn(
+                                            "flex items-center justify-between p-4 rounded-xl border transition-all cursor-pointer",
+                                            settings.enabled_payment_methods.includes(method.id)
+                                                ? "bg-blue-50/50 border-blue-100"
+                                                : "bg-white border-gray-100 opacity-60 grayscale hover:grayscale-0 hover:opacity-100"
+                                        )}
+                                        onClick={() => togglePaymentMethod(method.id)}
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <div className={cn(
+                                                "w-8 h-8 rounded-lg flex items-center justify-center",
+                                                settings.enabled_payment_methods.includes(method.id) ? "bg-blue-100 text-blue-600" : "bg-gray-100 text-gray-400"
+                                            )}>
+                                                {method.icon}
+                                            </div>
+                                            <span className="text-sm font-bold text-gray-700">{method.name}</span>
+                                        </div>
+                                        <div className={cn("w-10 h-5 rounded-full relative transition-colors", settings.enabled_payment_methods.includes(method.id) ? "bg-blue-500" : "bg-gray-200")}>
+                                            <div className={cn("absolute top-1 w-3 h-3 bg-white rounded-full transition-all", settings.enabled_payment_methods.includes(method.id) ? "left-6" : "left-1")} />
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="mt-6 space-y-4">
+                        <ChannelSettingsCard
+                            title="外送平台設定"
+                            description="結帳選擇外送時，顯示已開啟的平台。"
+                            enabled={settings.enabled_payment_methods.includes('platform_collect')}
+                            expanded={!!expandedChannelSettings.delivery_platforms}
+                            items={settings.delivery_platforms}
+                            placeholder="例如：Uber Eats、foodpanda"
+                            icon={<ShoppingCart size={18} className="text-[#D4AF37]" />}
+                            onToggle={() => setExpandedChannelSettings(current => ({ ...current, delivery_platforms: !current.delivery_platforms }))}
+                            onAdd={handleAddDeliveryPlatform}
+                            onChange={(items) => setSettings(current => ({ ...current, delivery_platforms: items }))}
+                        />
+                        <ChannelSettingsCard
+                            title="多元支付設定"
+                            description="已開啟的項目會直接顯示在結帳支付方式。"
+                            enabled={settings.enabled_payment_methods.includes('linepay')}
+                            expanded={!!expandedChannelSettings.multi_payment_methods}
+                            items={settings.multi_payment_methods}
+                            placeholder="例如：LINE Pay、街口支付、信用卡"
+                            icon={<Wallet size={18} className="text-[#D4AF37]" />}
+                            onToggle={() => setExpandedChannelSettings(current => ({ ...current, multi_payment_methods: !current.multi_payment_methods }))}
+                            onAdd={handleAddMultiPaymentMethod}
+                            onChange={(items) => setSettings(current => ({ ...current, multi_payment_methods: items }))}
+                        />
+                    </div>
                 </div>
 
                 {/* Right Side - Parameters */}
@@ -647,7 +803,7 @@ export default function AdminSettingsPage() {
                                         type="number"
                                         value={isNaN(settings.tax_rate) ? '' : settings.tax_rate}
                                         onChange={(e) => {
-                                            const val = e.target.value === '' ? 0 : parseFloat(e.target.value);
+                                            const val = e.target.value === '' ? 0 : Math.min(100, Math.max(0, parseFloat(e.target.value)));
                                             setSettings({ ...settings, tax_rate: val });
                                         }}
                                         className="h-12 bg-gray-50 border-gray-200 focus:border-[#D4AF37] font-bold"
@@ -681,11 +837,11 @@ export default function AdminSettingsPage() {
                     <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
                         <div className="px-6 py-4 bg-gray-50/80 border-b border-gray-100 flex items-center gap-3">
                             <Globe size={18} className="text-[#D4AF37]" />
-                            <h3 className="font-black text-gray-800 tracking-tight">環境語系與地區</h3>
+                            <h3 className="font-black text-gray-800 tracking-tight">時區與營業日</h3>
                         </div>
                         <div className="p-6 space-y-5">
                             <div className="space-y-1.5">
-                                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">系統時區偏移 (Timezone)</label>
+                                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">店鋪時區 (Timezone)</label>
                                 <div className="relative">
                                     <select
                                         value={settings.timezone}
@@ -698,20 +854,7 @@ export default function AdminSettingsPage() {
                                     </select>
                                     <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={16} />
                                 </div>
-                            </div>
-                            <div className="space-y-1.5">
-                                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest ml-1">系統語言 (Language)</label>
-                                <div className="relative">
-                                    <select
-                                        value={settings.language}
-                                        onChange={(e) => setSettings({ ...settings, language: e.target.value })}
-                                        className="w-full h-12 px-4 bg-gray-50 border border-gray-200 rounded-xl focus:border-[#D4AF37] focus:ring-4 focus:ring-[#D4AF37]/5 outline-none transition-all text-sm font-bold appearance-none"
-                                    >
-                                        <option value="zh-TW">繁體中文 (台灣)</option>
-                                        <option value="en-US">English (Western)</option>
-                                    </select>
-                                    <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={16} />
-                                </div>
+                                <p className="mt-2 text-[10px] text-gray-400">套用於每日單號重置、日結、儀表板營業日及訂單時間。</p>
                             </div>
                         </div>
                     </div>
@@ -861,55 +1004,6 @@ export default function AdminSettingsPage() {
                         </div>
                     </div>
 
-                    {/* Payment Management Card */}
-                    <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden mt-6">
-                        <div className="px-6 py-4 bg-gray-50/80 border-b border-gray-100 flex items-center gap-3">
-                            <CreditCard size={18} className="text-[#D4AF37]" />
-                            <h3 className="font-black text-gray-800 tracking-tight">支付管道管理</h3>
-                        </div>
-                        <div className="p-6 space-y-4">
-                            <p className="text-[11px] text-gray-400 font-medium mb-4">設定 POS 結帳畫面顯示的支付按鈕</p>
-
-                            <div className="grid grid-cols-1 gap-3">
-                                {[
-                                    { id: 'cash', name: '現金結帳', icon: <Coins size={16} /> },
-                                    { id: 'linepay', name: 'Line Pay', icon: <Wallet size={16} /> },
-                                    { id: 'platform_collect', name: '平台代收 (外送平台)', icon: <ShoppingCart size={16} /> }
-                                ].map((method) => (
-                                    <div
-                                        key={method.id}
-                                        className={cn(
-                                            "flex items-center justify-between p-4 rounded-xl border transition-all cursor-pointer",
-                                            settings.enabled_payment_methods.includes(method.id)
-                                                ? "bg-blue-50/50 border-blue-100"
-                                                : "bg-white border-gray-100 opacity-60 grayscale hover:grayscale-0 hover:opacity-100"
-                                        )}
-                                        onClick={() => togglePaymentMethod(method.id)}
-                                    >
-                                        <div className="flex items-center gap-3">
-                                            <div className={cn(
-                                                "w-8 h-8 rounded-lg flex items-center justify-center",
-                                                settings.enabled_payment_methods.includes(method.id) ? "bg-blue-100 text-blue-600" : "bg-gray-100 text-gray-400"
-                                            )}>
-                                                {method.icon}
-                                            </div>
-                                            <span className="text-sm font-bold text-gray-700">{method.name}</span>
-                                        </div>
-                                        <div className={cn(
-                                            "w-10 h-5 rounded-full relative transition-colors",
-                                            settings.enabled_payment_methods.includes(method.id) ? "bg-blue-500" : "bg-gray-200"
-                                        )}>
-                                            <div className={cn(
-                                                "absolute top-1 w-3 h-3 bg-white rounded-full transition-all",
-                                                settings.enabled_payment_methods.includes(method.id) ? "left-6" : "left-1"
-                                            )} />
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    </div>
-
                     {/* Discount Presets Card */}
                     <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden mt-6">
                         <div className="px-6 py-4 bg-gray-50/80 border-b border-gray-100 flex items-center justify-between">
@@ -982,6 +1076,19 @@ export default function AdminSettingsPage() {
                     </div>
                 </div>
             </div>
+
+
+            {(user?.is_admin || user?.stores?.some(store => store.id === selectedStoreId && store.user_role === 'owner')) && (
+                <div className="mt-10 rounded-2xl border border-red-200 bg-red-50 p-6 flex items-center justify-between gap-6">
+                    <div>
+                        <h3 className="font-black text-red-700">刪除店鋪</h3>
+                        <p className="mt-1 text-xs text-red-600">此操作無法復原，系統會要求輸入完整店鋪名稱確認。</p>
+                    </div>
+                    <Button variant="outline" onClick={handleDeleteStore} className="border-red-300 text-red-700 hover:bg-red-100">
+                        <Trash2 size={16} className="mr-2" /> 刪除店鋪
+                    </Button>
+                </div>
+            )}
         </div>
     );
 }

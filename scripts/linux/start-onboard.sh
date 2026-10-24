@@ -6,7 +6,7 @@ if [[ -z "${DISPLAY:-}" ]]; then
   exit 1
 fi
 if ! command -v onboard >/dev/null 2>&1; then
-  printf '[WARNING] 找不到 Onboard，請執行 ./scripts/install-touch-input.sh\n' >&2
+  printf '[WARNING] 找不到 Onboard，請執行 ./scripts/linux/install-touch-input.sh\n' >&2
   exit 1
 fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

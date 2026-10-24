@@ -8,7 +8,7 @@
 
 ### 步驟：
 1. **確認電腦 IP**：在執行伺服器的電腦上開啟終端機，輸入 `ipconfig` 找到 IPv4 位址（例如：`192.168.1.100`）。
-2. **啟動連線版本**：請使用 `.\start_dev_lan.bat` 啟動，或確保後端 Uvicorn 綁定在 `0.0.0.0`。
+2. **啟動連線版本**：請使用 `.\scripts\windows\start-dev.bat` 啟動，或在 Linux 執行 `./scripts/linux/start-dev.sh`；兩者預設都綁定在 `0.0.0.0`。
 3. **平板開啟網頁**：在 iPad 的 Safari 瀏覽器中輸入 `http://[電腦IP]:3000`。
     - 系統會自動將 API 請求導向至 `http://[電腦IP]:8000/api/v1`。
 

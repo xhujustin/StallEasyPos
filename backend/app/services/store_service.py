@@ -1,6 +1,7 @@
 from typing import List
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import IntegrityError
 from fastapi import HTTPException
 
 from app.models.store import Store
@@ -125,3 +126,32 @@ class StoreService:
         await db.commit()
         await db.refresh(store)
         return store
+
+    @staticmethod
+    async def delete_store(db: AsyncSession, store_id: int, current_user_id: int) -> None:
+        """Delete a store when requested by its owner or a system administrator."""
+        user = await db.get(User, current_user_id)
+        store = await db.get(Store, store_id)
+        if not store:
+            raise HTTPException(status_code=404, detail="找不到店鋪")
+
+        if not user or (not user.is_admin and store.owner_id != current_user_id):
+            relation = await db.execute(
+                select(StoreUser).where(
+                    StoreUser.store_id == store_id,
+                    StoreUser.user_id == current_user_id,
+                    StoreUser.role == UserRole.OWNER,
+                )
+            )
+            if relation.scalar_one_or_none() is None:
+                raise HTTPException(status_code=403, detail="只有店主或系統管理員可以刪除店鋪")
+
+        try:
+            await db.delete(store)
+            await db.commit()
+        except IntegrityError as exc:
+            await db.rollback()
+            raise HTTPException(
+                status_code=409,
+                detail="店鋪已有訂單、班次或財務紀錄，為保留稽核資料目前無法永久刪除",
+            ) from exc

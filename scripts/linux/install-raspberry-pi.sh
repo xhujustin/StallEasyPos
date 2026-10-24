@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 ENV_FILE="$PROJECT_DIR/.env"
 CREDENTIAL_FILE="$PROJECT_DIR/.initial-credentials"
 
@@ -103,19 +103,19 @@ chmod 600 "$CREDENTIAL_FILE"
 
 log "驗證 Compose 設定"
 cd "$PROJECT_DIR"
-"$PROJECT_DIR/scripts/install-host-services.sh"
+"$PROJECT_DIR/scripts/linux/install-host-services.sh"
 "${DOCKER[@]}" compose config --quiet
 
 log "建置並啟動 StallEasy POS（第一次可能需要數分鐘）"
 if ! "${DOCKER[@]}" compose build; then
   printf '\n若錯誤包含 IPv6「network is unreachable」，請執行：\n'
-  printf '  ./scripts/fix-docker-network.sh\n'
+  printf '  ./scripts/linux/fix-docker-network.sh\n'
   exit 1
 fi
 "${DOCKER[@]}" compose up -d
 
 log "執行服務健康測試"
-DOCKER_CMD="${DOCKER[*]}" "$PROJECT_DIR/scripts/smoke-test.sh"
+DOCKER_CMD="${DOCKER[*]}" "$PROJECT_DIR/scripts/linux/smoke-test.sh"
 
 PI_IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
 printf '\n安裝完成。\n'
@@ -127,8 +127,8 @@ if [[ -f "$CREDENTIAL_FILE" ]]; then
 fi
 
 if [[ "${CREATE_DESKTOP_SHORTCUT:-true}" = "true" ]]; then
-  "$PROJECT_DIR/scripts/install-touch-input.sh"
-  "$PROJECT_DIR/scripts/install-desktop-launcher.sh"
+  "$PROJECT_DIR/scripts/linux/install-touch-input.sh"
+  "$PROJECT_DIR/scripts/linux/install-desktop-launcher.sh"
 fi
 
 if ! docker info >/dev/null 2>&1; then

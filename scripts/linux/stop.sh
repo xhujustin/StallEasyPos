@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 pause_on_exit() {
   local exit_code=$?
@@ -37,4 +37,4 @@ printf '[StallEasy POS] 正在停止服務...\n'
 "${DOCKER[@]}" compose stop
 
 printf '\nStallEasy POS 已停止。資料庫與上傳檔均已保留。\n'
-printf '需要再次啟動時請執行：./scripts/start.sh\n'
+printf '需要再次啟動時請執行：./scripts/linux/start.sh\n'

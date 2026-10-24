@@ -21,8 +21,7 @@ import {
     Coins,
     Type,
     Settings,
-    ChevronDown,
-    Power
+    ChevronDown
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -37,6 +36,7 @@ interface DeviceSettings {
     printer_type: string;
     printer_port: number;
     printer_usb_path: string;
+    printers: PrinterConfig[];
     paper_width: string;
     auto_print_receipt: boolean;
     print_number_ticket: boolean;
@@ -45,20 +45,46 @@ interface DeviceSettings {
     pos_show_product_image: boolean;
     pos_show_cart_item_details: boolean;
     pos_sound_enabled: boolean;
+    scheduled_order_dispatch_lead_minutes: number;
 }
 
+type PrinterOutput = 'receipt' | 'kitchen' | 'label' | 'number_ticket' | 'shift_report' | 'drawer';
+
+interface PrinterConfig {
+    id: string;
+    name: string;
+    enabled: boolean;
+    type: 'network' | 'usb';
+    ip: string;
+    port: number;
+    usb_path: string;
+    paper_width: string;
+    label_render_mode?: 'native' | 'hybrid' | 'raster';
+    outputs: PrinterOutput[];
+    hold_outputs?: PrinterOutput[];
+    scheduled_outputs?: PrinterOutput[];
+}
+
+const OUTPUT_OPTIONS: { value: PrinterOutput; label: string }[] = [
+    { value: 'receipt', label: '顧客收據' },
+    { value: 'kitchen', label: '內場單' },
+    { value: 'label', label: '商品貼紙' },
+    { value: 'number_ticket', label: '號碼牌' },
+    { value: 'shift_report', label: '班次明細' },
+    { value: 'drawer', label: '錢箱' },
+];
+
+const HOLD_OUTPUT_OPTIONS = OUTPUT_OPTIONS.filter(option =>
+    ['receipt', 'kitchen', 'label', 'number_ticket'].includes(option.value)
+);
+
 export default function POSSettingsPage() {
-    const { user, selectedStoreId, updateUser } = useAuthStore();
-    const canShutdown = Boolean(
-        user?.is_admin || user?.stores?.some(
-            (store) => store.id === selectedStoreId && store.user_role === 'owner'
-        )
-    );
+    const { selectedStoreId, updateUser } = useAuthStore();
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
-    const [shuttingDown, setShuttingDown] = useState(false);
     const [scanning, setScanning] = useState(false);
     const [detectedPrinters, setDetectedPrinters] = useState<DetectedPrinter[]>([]);
+    const [expandedPrinters, setExpandedPrinters] = useState<Record<string, boolean>>({});
     const [mounted, setMounted] = useState(false);
 
     // 硬體與偏好設定
@@ -67,6 +93,7 @@ export default function POSSettingsPage() {
         printer_type: 'network',
         printer_port: 9100,
         printer_usb_path: '/dev/usb/lp0',
+        printers: [],
         paper_width: '57mm',
         auto_print_receipt: false,
         print_number_ticket: false,
@@ -75,6 +102,7 @@ export default function POSSettingsPage() {
         pos_show_product_image: true,
         pos_show_cart_item_details: true,
         pos_sound_enabled: true,
+        scheduled_order_dispatch_lead_minutes: 15,
     });
 
     // 個人資料
@@ -144,6 +172,80 @@ export default function POSSettingsPage() {
         const newSettings = { ...deviceSettings, ...updates };
         setDeviceSettings(newSettings);
         autoSaveDeviceSettings(newSettings);
+    };
+
+    const savePrinters = (printers: PrinterConfig[]) => updateAndSave({ printers });
+
+    const addPrinter = () => {
+        const printer: PrinterConfig = {
+            id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `printer-${Date.now()}`,
+            name: `印表機 ${deviceSettings.printers.length + 1}`,
+            enabled: true,
+            type: 'usb',
+            ip: '',
+            port: 9100,
+            usb_path: '/dev/usb/lp0',
+            paper_width: '57mm',
+            label_render_mode: 'native',
+            outputs: deviceSettings.printers.length === 0 ? ['receipt'] : [],
+            hold_outputs: [],
+            scheduled_outputs: [],
+        };
+        setExpandedPrinters(prev => ({ ...prev, [printer.id]: true }));
+        savePrinters([...deviceSettings.printers, printer]);
+    };
+
+    const updatePrinter = (id: string, updates: Partial<PrinterConfig>) => {
+        savePrinters(deviceSettings.printers.map(printer => printer.id === id ? { ...printer, ...updates } : printer));
+    };
+
+    const removePrinter = (id: string) => {
+        if (!window.confirm('確定要移除這台印表機嗎？')) return;
+        savePrinters(deviceSettings.printers.filter(printer => printer.id !== id));
+    };
+
+    const togglePrinterOutput = (printer: PrinterConfig, output: PrinterOutput) => {
+        const outputs = printer.outputs.includes(output)
+            ? printer.outputs.filter(item => item !== output)
+            : [...printer.outputs, output];
+        updatePrinter(printer.id, { outputs });
+    };
+
+    const togglePrinterHoldOutput = (printer: PrinterConfig, output: PrinterOutput) => {
+        const current = printer.hold_outputs || [];
+        const hold_outputs = current.includes(output)
+            ? current.filter(item => item !== output)
+            : [...current, output];
+        updatePrinter(printer.id, { hold_outputs });
+    };
+
+    const togglePrinterScheduledOutput = (printer: PrinterConfig, output: PrinterOutput) => {
+        const current = printer.scheduled_outputs || [];
+        const scheduled_outputs = current.includes(output)
+            ? current.filter(item => item !== output)
+            : [...current, output];
+        updatePrinter(printer.id, { scheduled_outputs });
+    };
+
+    const selectDeviceForPrinter = (printerId: string, selected: string) => {
+        const device = detectedPrinters.find(item => `${item.type}:${item.value}` === selected);
+        if (!device) return;
+        if (device.type === 'network') {
+            updatePrinter(printerId, { type: 'network', ip: device.value });
+        } else {
+            updatePrinter(printerId, { type: 'usb', usb_path: device.value });
+        }
+    };
+
+    const testConfiguredPrinter = async (printer: PrinterConfig) => {
+        if (!selectedStoreId) return;
+        try {
+            await autoSaveDeviceSettings(deviceSettings);
+            await hardwareApi.testPrint(selectedStoreId, printer.id);
+            toast.success(`已送出測試單至「${printer.name}」`);
+        } catch (error: any) {
+            toast.error(error.response?.data?.detail || error.message || '測試列印失敗');
+        }
     };
 
     const handleSaveProfile = async () => {
@@ -217,22 +319,9 @@ export default function POSSettingsPage() {
         const device = detectedPrinters.find(item => `${item.type}:${item.value}` === selected);
         if (!device) return;
         if (device.type === 'network') {
-            updateAndSave({ printer_type: 'network', printer_ip: device.value, printer_port: 9100 });
+            updateAndSave({ printer_type: 'network', printer_ip: device.value });
         } else {
             updateAndSave({ printer_type: 'usb', printer_usb_path: device.value });
-        }
-    };
-
-    const handleShutdown = async () => {
-        if (!selectedStoreId) return;
-        if (!window.confirm('確定要安全關閉 Raspberry Pi 嗎？所有 POS 裝置將中斷連線。')) return;
-        try {
-            setShuttingDown(true);
-            await settingsApi.shutdownHost(selectedStoreId);
-            toast.success('已送出安全關機指令，系統將在數秒內關閉');
-        } catch (error: any) {
-            toast.error(error.response?.data?.detail || '關機失敗，請確認目前帳號權限與主機設定');
-            setShuttingDown(false);
         }
     };
 
@@ -258,18 +347,6 @@ export default function POSSettingsPage() {
                     </div>
                 </div>
                 <div className="flex items-center gap-4">
-                    {canShutdown && (
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={handleShutdown}
-                            disabled={shuttingDown}
-                            className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
-                        >
-                            <Power className="mr-2 h-4 w-4" />
-                            {shuttingDown ? '正在關機…' : '安全關機'}
-                        </Button>
-                    )}
                     <div className="flex items-center gap-2 text-slate-400 text-xs font-medium">
                         <div className="w-1.5 h-1.5 rounded-full bg-green-500" />
                         設定已自動同步至雲端
@@ -296,9 +373,9 @@ export default function POSSettingsPage() {
                         <section className="space-y-4 flex flex-col">
                             <div className="flex items-center gap-2 px-1 text-slate-700">
                                 <HardDrive size={18} className="text-slate-400" />
-                                <h2 className="font-bold">硬體設備連線</h2>
+                                <h2 className="font-bold">印表機與輸出內容</h2>
                             </div>
-                            <Card className="border-slate-200 shadow-sm flex-1">
+                            {false && <Card className="border-slate-200 shadow-sm flex-1">
                                 <CardContent className="p-6 space-y-6">
                                     <div className="space-y-2">
                                         <div className="flex items-center justify-between gap-3">
@@ -329,9 +406,9 @@ export default function POSSettingsPage() {
                                                 </option>
                                             ))}
                                         </select>
-                                        <p className="text-[10px] text-slate-400">Wi-Fi 會搜尋同一區域網路中使用 9100 連接埠的出單機；USB 會列出主機已辨識的印表機。</p>
+                                        <p className="text-[10px] text-slate-400">Wi-Fi 會搜尋同一網段內可連線的裝置，不限制特定連接埠；請選擇出單機 IP，再填寫該機器使用的連接埠。USB 會列出主機已辨識的印表機。</p>
                                     </div>
-                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                                         <div className="space-y-2">
                                             <Label className="text-xs text-slate-500 uppercase font-bold tracking-wider">連線方式</Label>
                                             <select
@@ -343,6 +420,20 @@ export default function POSSettingsPage() {
                                                 <option value="usb">USB</option>
                                             </select>
                                         </div>
+                                        {deviceSettings.printer_type === 'network' && (
+                                            <div className="space-y-2">
+                                                <Label className="text-xs text-slate-500 uppercase font-bold tracking-wider">印表機連接埠</Label>
+                                                <Input
+                                                    type="number"
+                                                    min={1}
+                                                    max={65535}
+                                                    value={deviceSettings.printer_port}
+                                                    onChange={(e) => setDeviceSettings({ ...deviceSettings, printer_port: Number(e.target.value) || 9100 })}
+                                                    onBlur={() => autoSaveDeviceSettings(deviceSettings)}
+                                                    className="bg-slate-50 border-slate-200 font-mono font-bold h-11"
+                                                />
+                                            </div>
+                                        )}
                                         <div className="space-y-2">
                                             <Label className="text-xs text-slate-500 uppercase font-bold tracking-wider">
                                                 {deviceSettings.printer_type === 'network' ? '印表機 IP 地址' : 'USB 裝置路徑'}
@@ -446,6 +537,179 @@ export default function POSSettingsPage() {
                                             <Coins className="mr-2 h-4 w-4" /> 測試開錢箱
                                         </Button>
                                     </div>
+                                </CardContent>
+                            </Card>}
+                            <Card className="border-amber-200 shadow-sm">
+                                <CardHeader className="pb-3">
+                                    <div className="flex items-center justify-between gap-3">
+                                        <div>
+                                            <CardTitle className="text-base">印表機與輸出內容</CardTitle>
+                                            <p className="mt-1 text-xs text-slate-500">同一用途可指定多台；結帳後會各自輸出。</p>
+                                        </div>
+                                        <Button type="button" size="sm" onClick={addPrinter}>新增印表機</Button>
+                                    </div>
+                                </CardHeader>
+                                <CardContent className="space-y-4">
+                                    <div className="grid grid-cols-1 gap-3 rounded-xl border border-blue-200 bg-blue-50/60 p-4 md:grid-cols-[1fr_150px] md:items-center">
+                                        <div>
+                                            <p className="text-sm font-bold text-slate-700">定時掛單提前派發</p>
+                                            <p className="mt-1 text-xs text-slate-500">到達預計取餐時間前，自動送出下方各印表機勾選的掛單輸出內容。</p>
+                                        </div>
+                                        <div className="relative">
+                                            <Input
+                                                type="number"
+                                                min={0}
+                                                max={240}
+                                                value={deviceSettings.scheduled_order_dispatch_lead_minutes}
+                                                onChange={(e) => updateAndSave({ scheduled_order_dispatch_lead_minutes: Math.min(240, Math.max(0, Number(e.target.value) || 0)) })}
+                                                className="h-10 bg-white pr-12 text-right font-mono font-bold"
+                                            />
+                                            <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400">分鐘</span>
+                                        </div>
+                                    </div>
+                                    <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                                        <div className="flex items-center justify-between gap-3">
+                                            <div>
+                                                <p className="text-sm font-bold text-slate-700">自動偵測裝置</p>
+                                                <p className="text-xs text-slate-500">搜尋 USB 印表機與同網段 Wi-Fi 裝置。</p>
+                                            </div>
+                                            <Button type="button" variant="outline" size="sm" onClick={() => scanPrinters(true)} disabled={scanning}>
+                                                <RefreshCcw className={cn('mr-2 h-3.5 w-3.5', scanning && 'animate-spin')} />
+                                                {scanning ? '掃描中…' : '重新掃描'}
+                                            </Button>
+                                        </div>
+                                        {detectedPrinters.length > 0 && (
+                                            <p className="text-xs font-bold text-emerald-700">已找到 {detectedPrinters.length} 個可選裝置，請在各印表機展開內容中選擇。</p>
+                                        )}
+                                    </div>
+                                    {deviceSettings.printers.length === 0 && (
+                                        <div className="rounded-xl border border-dashed border-slate-300 p-5 text-center text-sm text-slate-500">
+                                            尚未新增印表機，請點選「新增印表機」。
+                                        </div>
+                                    )}
+                                    {deviceSettings.printers.map((printer) => (
+                                        <div key={printer.id} className="space-y-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                                            <div className="flex flex-wrap items-center gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setExpandedPrinters(prev => ({ ...prev, [printer.id]: !prev[printer.id] }))}
+                                                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 hover:bg-slate-100"
+                                                    aria-label={expandedPrinters[printer.id] ? '收合印表機設定' : '展開印表機設定'}
+                                                >
+                                                    <ChevronDown className={cn('h-4 w-4 transition-transform', expandedPrinters[printer.id] && 'rotate-180')} />
+                                                </button>
+                                                <Input
+                                                    value={printer.name}
+                                                    onChange={(e) => updatePrinter(printer.id, { name: e.target.value })}
+                                                    className="h-10 min-w-[160px] flex-1 bg-white font-bold"
+                                                    placeholder="例如：櫃檯收據機"
+                                                />
+                                                <Button type="button" variant="outline" size="sm" onClick={() => testConfiguredPrinter(printer)}>測試</Button>
+                                                <Button type="button" variant="outline" size="sm" className="text-red-600" onClick={() => removePrinter(printer.id)}>移除</Button>
+                                                <label className="flex items-center gap-2 text-xs font-bold">
+                                                    <input type="checkbox" checked={printer.enabled} onChange={(e) => updatePrinter(printer.id, { enabled: e.target.checked })} /> 啟用
+                                                </label>
+                                                {!expandedPrinters[printer.id] && (
+                                                    <span className="w-full pl-12 text-xs text-slate-500">
+                                                        {printer.outputs.length > 0
+                                                            ? printer.outputs.map(output => OUTPUT_OPTIONS.find(option => option.value === output)?.label || output).join('、')
+                                                            : '尚未指定輸出內容'}
+                                                    </span>
+                                                )}
+                                            </div>
+                                            {expandedPrinters[printer.id] && <>
+                                            <select
+                                                value=""
+                                                onChange={(e) => selectDeviceForPrinter(printer.id, e.target.value)}
+                                                className="h-10 w-full rounded-md border border-amber-200 bg-amber-50 px-3 text-sm font-bold"
+                                            >
+                                                <option value="">從自動偵測列表選擇裝置</option>
+                                                {detectedPrinters.map(device => (
+                                                    <option key={`${printer.id}:${device.type}:${device.value}`} value={`${device.type}:${device.value}`}>
+                                                        {device.type === 'usb' ? 'USB' : 'Wi-Fi'}｜{device.label}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                            <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+                                                <select value={printer.type} onChange={(e) => updatePrinter(printer.id, { type: e.target.value as 'network' | 'usb' })} className="h-10 rounded-md border bg-white px-3 text-sm font-bold">
+                                                    <option value="usb">USB</option>
+                                                    <option value="network">Wi-Fi／網路</option>
+                                                </select>
+                                                <Input
+                                                    value={printer.type === 'usb' ? printer.usb_path : printer.ip}
+                                                    onChange={(e) => updatePrinter(printer.id, printer.type === 'usb' ? { usb_path: e.target.value } : { ip: e.target.value })}
+                                                    placeholder={printer.type === 'usb' ? '/dev/usb/lp0' : '192.168.1.100'}
+                                                    className="h-10 bg-white font-mono"
+                                                />
+                                                {printer.type === 'network' && (
+                                                    <Input type="number" min={1} max={65535} value={printer.port} onChange={(e) => updatePrinter(printer.id, { port: Number(e.target.value) || 9100 })} className="h-10 bg-white font-mono" />
+                                                )}
+                                                <select value={printer.paper_width} onChange={(e) => updatePrinter(printer.id, { paper_width: e.target.value })} className="h-10 rounded-md border bg-white px-3 text-sm font-bold">
+                                                    <option value="57mm">57／58mm</option>
+                                                    <option value="80mm">80mm</option>
+                                                </select>
+                                            </div>
+                                            {(printer.outputs.includes('label') || (printer.hold_outputs || []).includes('label')) && (
+                                                <div className="grid grid-cols-1 gap-2 md:grid-cols-[160px_1fr] md:items-center">
+                                                    <Label className="text-xs font-bold text-slate-600">貼紙字體</Label>
+                                                    <select
+                                                        value={printer.label_render_mode || 'native'}
+                                                        onChange={(e) => updatePrinter(printer.id, { label_render_mode: e.target.value as 'native' | 'hybrid' | 'raster' })}
+                                                        className="h-10 rounded-md border bg-white px-3 text-sm font-bold"
+                                                    >
+                                                        <option value="native">印表機內建字庫（清晰）</option>
+                                                        <option value="hybrid">混合模式（中文圖片／數字符號內建）</option>
+                                                        <option value="raster">高解析圖片（相容性高）</option>
+                                                    </select>
+                                                </div>
+                                            )}
+                                            <div>
+                                                <p className="mb-2 text-xs font-bold text-slate-600">結帳輸出內容</p>
+                                                <div className="flex flex-wrap gap-2">
+                                                    {OUTPUT_OPTIONS.map(option => (
+                                                        <label key={option.value} className={cn(
+                                                            "flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-xs font-bold",
+                                                            printer.outputs.includes(option.value) ? "border-amber-400 bg-amber-50 text-amber-800" : "border-slate-200 bg-white text-slate-500"
+                                                        )}>
+                                                            <input type="checkbox" checked={printer.outputs.includes(option.value)} onChange={() => togglePrinterOutput(printer, option.value)} />
+                                                            {option.label}
+                                                        </label>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <p className="mb-2 text-xs font-bold text-slate-600">一般掛單輸出內容</p>
+                                                <div className="flex flex-wrap gap-2">
+                                                    {HOLD_OUTPUT_OPTIONS.map(option => (
+                                                        <label key={`hold-${option.value}`} className={cn(
+                                                            "flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-xs font-bold",
+                                                            (printer.hold_outputs || []).includes(option.value) ? "border-blue-400 bg-blue-50 text-blue-800" : "border-slate-200 bg-white text-slate-500"
+                                                        )}>
+                                                            <input type="checkbox" checked={(printer.hold_outputs || []).includes(option.value)} onChange={() => togglePrinterHoldOutput(printer, option.value)} />
+                                                            {option.label}
+                                                        </label>
+                                                    ))}
+                                                </div>
+                                                <p className="mt-2 text-[11px] text-slate-500">決定掛單清單中可手動列印的內容。</p>
+                                            </div>
+                                            <div>
+                                                <p className="mb-2 text-xs font-bold text-slate-600">定時派發輸出內容</p>
+                                                <div className="flex flex-wrap gap-2">
+                                                    {HOLD_OUTPUT_OPTIONS.map(option => (
+                                                        <label key={`scheduled-${option.value}`} className={cn(
+                                                            "flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-xs font-bold",
+                                                            (printer.scheduled_outputs || []).includes(option.value) ? "border-violet-400 bg-violet-50 text-violet-800" : "border-slate-200 bg-white text-slate-500"
+                                                        )}>
+                                                            <input type="checkbox" checked={(printer.scheduled_outputs || []).includes(option.value)} onChange={() => togglePrinterScheduledOutput(printer, option.value)} />
+                                                            {option.label}
+                                                        </label>
+                                                    ))}
+                                                </div>
+                                                <p className="mt-2 text-[11px] text-slate-500">只在定時掛單到達提前派發時間時自動輸出；已輸出的內容在結帳時不會重複列印。</p>
+                                            </div>
+                                            </>}
+                                        </div>
+                                    ))}
                                 </CardContent>
                             </Card>
                         </section>

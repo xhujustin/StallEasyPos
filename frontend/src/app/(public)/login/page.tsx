@@ -5,13 +5,14 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { AlertCircle, Eye, EyeOff } from 'lucide-react';
+import { AlertCircle, Eye, EyeOff, Power } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import styles from './page.module.css';
 import { cn } from '@/lib/utils';
 import { authApi } from '@/lib/api/auth';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { jwtDecode } from 'jwt-decode';
+import { settingsApi } from '@/lib/api/settings';
 
 export default function LoginPage() {
     const router = useRouter();
@@ -21,15 +22,41 @@ export default function LoginPage() {
     const [loading, setLoading] = useState(false);
     const [activeField, setActiveField] = useState<'username' | 'pin'>('username');
     const [showPin, setShowPin] = useState(false);
+    const [isLocalAccess, setIsLocalAccess] = useState(false);
+    const [shuttingDown, setShuttingDown] = useState(false);
 
     // Load remembered username on mount
     useEffect(() => {
+        const hostname = window.location.hostname.toLowerCase();
+        setIsLocalAccess(['localhost', '127.0.0.1', '::1', '[::1]'].includes(hostname));
         const rememberedUsername = localStorage.getItem('remembered_username');
         if (rememberedUsername) {
             setUsername(rememberedUsername);
             setActiveField('pin'); // 帳號已自動填入，焦點移至 PIN
         }
     }, []);
+
+    const handleShutdown = async () => {
+        if (!username || pin.length < 4) {
+            setError('安全關機前請先輸入店鋪帳號與店主 PIN 碼');
+            return;
+        }
+        if (!window.confirm('確定要安全關閉這台 POS 主機嗎？')) return;
+        try {
+            setShuttingDown(true);
+            const { access_token } = await authApi.login({ username, password: pin });
+            document.cookie = `token=${access_token}; path=/; max-age=${7 * 24 * 60 * 60}`;
+            useAuthStore.getState().setAuth(access_token, { id: 0, username: 'loading...', is_admin: false, is_active: true, stores: [] }, 'ADMIN');
+            const user = await authApi.getMe();
+            useAuthStore.getState().setAuth(access_token, user, 'ADMIN');
+            const storeId = user.stores?.[0]?.id;
+            if (!storeId) throw new Error('此帳號沒有可管理的店鋪');
+            await settingsApi.shutdownHost(storeId);
+        } catch (err: any) {
+            setError(err.response?.data?.detail || err.message || '安全關機失敗');
+            setShuttingDown(false);
+        }
+    };
 
     const handleInput = (num: string) => {
         if (activeField === 'username') {
@@ -173,6 +200,17 @@ export default function LoginPage() {
 
     return (
         <div className={styles.container}>
+            {isLocalAccess && (
+                <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleShutdown}
+                    disabled={shuttingDown}
+                    className="fixed bottom-5 left-5 border-red-200 bg-white text-red-600 hover:bg-red-50"
+                >
+                    <Power className="mr-2 h-4 w-4" /> {shuttingDown ? '關機中…' : '安全關機'}
+                </Button>
+            )}
             <Card className={styles.card}>
                 <CardHeader className={cn(styles.header, "pb-2")}>
                     <CardTitle className={styles.title}>StallEasy POS</CardTitle>

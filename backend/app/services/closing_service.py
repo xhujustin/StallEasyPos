@@ -7,6 +7,7 @@ from app.models.closing import DailyClosing
 from app.models.order import Order, OrderStatus, PaymentMethod
 from app.schemas.closing import ClosingCreate
 from app.services.store_service import StoreService
+from app.services.store_clock import get_store_clock
 
 class ClosingService:
     @staticmethod
@@ -23,7 +24,7 @@ class ClosingService:
         await StoreService.get_store_if_authorized(db, store_id, user_id)
         
         # Check if already closed
-        today = date.today()
+        _, today = await get_store_clock(db, store_id)
         existing = await db.execute(
             select(DailyClosing).where(
                 DailyClosing.store_id == store_id,

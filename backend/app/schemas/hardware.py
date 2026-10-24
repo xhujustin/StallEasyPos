@@ -7,6 +7,7 @@ class ReceiptLine(BaseModel):
     name: str
     quantity: float
     amount: float
+    unit_price: Optional[float] = None
     options: list[str] = Field(default_factory=list)
     note: Optional[str] = None
 
@@ -14,11 +15,21 @@ class ReceiptLine(BaseModel):
 class ReceiptJob(BaseModel):
     order_no: str
     store_name: str = "StallEasy POS"
+    receipt_header: str = ""
+    receipt_footer: str = ""
+    business_id: str = ""
     created_at: str
+    pickup_at: Optional[str] = None
     cashier: str = ""
     payment_method: str = "cash"
+    delivery_platform: Optional[str] = None
+    payment_provider: Optional[str] = None
+    order_type: str = "take_out"
     subtotal: Optional[float] = None
     service_fee: float = 0
+    tax_rate: float = 0
+    tax_mode: str = "inclusive"
+    tax_amount: float = 0
     discount_amount: float = 0
     discount_note: Optional[str] = None
     total: float
@@ -57,8 +68,9 @@ class ShiftReportJob(BaseModel):
 
 
 class HardwareJob(BaseModel):
-    action: Literal["print_receipt", "print_number_ticket", "print_shift_report", "open_drawer", "test_print", "scan_devices"]
+    action: Literal["print_receipt", "print_kitchen", "print_label", "print_number_ticket", "print_shift_report", "open_drawer", "test_print", "scan_devices"]
     device_id: str = Field(min_length=1)
+    printer_id: Optional[str] = None
     receipt: Optional[Union[ReceiptJob, ShiftReportJob]] = None
 
 

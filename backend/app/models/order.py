@@ -47,8 +47,13 @@ class Order(Base):
     service_fee_rate: Mapped[float] = mapped_column(Numeric(5, 2), nullable=False, server_default="0")
     subtotal: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False, server_default="0")
     service_fee: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False, server_default="0")
+    tax_rate: Mapped[float] = mapped_column(Numeric(5, 2), nullable=False, server_default="5")
+    tax_mode: Mapped[str] = mapped_column(Text, nullable=False, server_default="inclusive")
+    tax_amount: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False, server_default="0")
     total_amount: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
     payment_method: Mapped[Optional[PaymentMethod]] = mapped_column(psql_enum(PaymentMethod, name="payment_method"), nullable=True)
+    delivery_platform: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    payment_provider: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     
     idempotency_key: Mapped[str] = mapped_column(Text, nullable=False)
     business_date: Mapped[date] = mapped_column(Date, nullable=False, server_default=func.current_date())
@@ -61,6 +66,7 @@ class Order(Base):
     created_by_id: Mapped[Optional[int]] = mapped_column(BigInteger, ForeignKey("users.id"), nullable=True)
     cash_received: Mapped[Optional[float]] = mapped_column(Numeric(10, 2), nullable=True)
     change_amount: Mapped[Optional[float]] = mapped_column(Numeric(10, 2), nullable=True)
+    timezone: Mapped[str] = mapped_column(Text, nullable=False, server_default="Asia/Taipei")
     
     # 新增折扣欄位
     discount_amount: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False, server_default="0")

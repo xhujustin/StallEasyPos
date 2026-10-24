@@ -13,6 +13,8 @@ import { toast } from 'sonner';
 import { OrderDetailModal } from '@/components/orders/OrderDetailModal';
 import { shiftApi } from '@/lib/api/shifts';
 import { hardwareApi } from '@/lib/api/hardware';
+import { dateKeyInTimeZone, formatTime } from '@/lib/utils';
+import { settingsApi } from '@/lib/api/settings';
 
 export default function OrdersPage() {
     const { selectedStoreId: storeId, user } = useAuthStore();
@@ -37,8 +39,8 @@ export default function OrdersPage() {
                 console.error("Failed to get current shift", e);
             }
 
-            const today = new Date();
-            const startStr = today.toISOString().split('T')[0];
+            const profile = await settingsApi.getStoreProfile(storeId);
+            const startStr = dateKeyInTimeZone(new Date(), profile.timezone);
 
             // 2. Fetch Orders
             // If we have a current shift, we PRIORITIZE filtering by it.
@@ -202,7 +204,7 @@ export default function OrdersPage() {
                                             #{order.order_no}
                                         </TableCell>
                                         <TableCell className="text-slate-600 font-medium px-2 py-2 text-xs">
-                                            {new Date(order.created_at).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit', hour12: false })}
+                                            {formatTime(order.created_at, order.timezone)}
                                         </TableCell>
                                         <td className="px-2 py-2 text-center">
                                             <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${order.order_type === 'dine_in' ? 'bg-blue-50 text-blue-600' : 'bg-gray-50 text-gray-500'
@@ -212,7 +214,7 @@ export default function OrdersPage() {
                                         </td>
                                         <TableCell className="px-2 py-2">
                                             <Badge variant="outline" className="font-normal text-slate-600 text-[10px] px-1 h-5">
-                                                {order.payment_method === 'cash' ? '現金' : order.payment_method || '-'}
+                                                {order.delivery_platform || order.payment_provider || (order.payment_method === 'cash' ? '現金' : order.payment_method || '-')}
                                             </Badge>
                                         </TableCell>
                                         <TableCell className="font-bold text-slate-900 font-mono px-2 py-2">
