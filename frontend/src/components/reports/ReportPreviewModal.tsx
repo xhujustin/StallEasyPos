@@ -152,7 +152,7 @@ const AccountantReportContent = ({ shifts, dateRange }: ReportContentProps) => {
                         const diff = (shift.final_cash || 0) - expected;
                         return (
                             <tr key={shift.id}>
-                                <td className="py-1 font-mono">#{shift.id}</td>
+                                <td className="py-1 font-mono">{shift.shift_number}</td>
                                 <td className="py-1">
                                     {shift.opened_by?.username} <span className="text-gray-400">/</span> {shift.closed_by?.username || '-'}
                                 </td>
@@ -250,7 +250,7 @@ const ModernReportContent = ({ shifts, dateRange }: ReportContentProps) => {
                                     <div className="w-2 bg-slate-800 rounded-t-sm opacity-90" style={{ height: `${salesHeight}%` }} title={`Sales: $${shift.total_sales}`}></div>
                                     <div className="w-2 bg-[#D4AF37] rounded-t-sm opacity-90" style={{ height: `${profitHeight}%` }} title={`Profit: $${shift.total_net_profit}`}></div>
                                 </div>
-                                <span className="text-[10px] text-slate-400 mt-2 font-mono">#{shift.id}</span>
+                                <span className="text-[10px] text-slate-400 mt-2 font-mono">{shift.shift_number}</span>
                             </div>
                         );
                     })}
@@ -280,7 +280,7 @@ const ModernReportContent = ({ shifts, dateRange }: ReportContentProps) => {
                             const diff = (shift.final_cash || 0) - expected;
                             return (
                                 <tr key={shift.id} className="hover:bg-slate-50">
-                                    <td className="px-4 py-3 font-mono text-slate-500">#{shift.id}</td>
+                                    <td className="px-4 py-3 font-mono text-slate-500">{shift.shift_number}</td>
                                     <td className="px-4 py-3">{shift.opened_by?.username}</td>
                                     <td className="px-4 py-3">{shift.closed_by?.username || '-'}</td>
                                     <td className="px-4 py-3 text-right font-mono">{shift.order_count || 0}</td>

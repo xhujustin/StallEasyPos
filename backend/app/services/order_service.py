@@ -55,6 +55,7 @@ class OrderService:
         # For POS, we usually expect a shift to be open.
         current_shift = await ShiftService.get_active_shift(db, store_id)
         shift_id = current_shift.id if current_shift else None
+        shift_number = current_shift.shift_number if current_shift else None
 
         # 2. Idempotency Check (Store Scope)
         result = await db.execute(
@@ -234,7 +235,8 @@ class OrderService:
             business_date=business_date,
             discount_amount=order_in.discount_amount,
             discount_note=order_in.discount_note,
-            shift_id=shift_id
+            shift_id=shift_id,
+            shift_number=shift_number,
         )
         
         db.add(order)

@@ -14,6 +14,7 @@ class ReceiptLine(BaseModel):
 
 class ReceiptJob(BaseModel):
     order_no: str
+    shift_number: Optional[int] = None
     store_name: str = "StallEasy POS"
     receipt_header: str = ""
     receipt_footer: str = ""
@@ -47,6 +48,7 @@ class ShiftReportProduct(BaseModel):
 class ShiftReportJob(BaseModel):
     report_type: Literal["shift"] = "shift"
     shift_id: int
+    shift_number: Optional[int] = None
     start_time: str
     end_time: str
     opened_by: str = ""

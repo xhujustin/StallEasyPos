@@ -38,6 +38,7 @@ class Order(Base):
     id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
     store_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("stores.id", ondelete="RESTRICT"), nullable=False)
     shift_id: Mapped[Optional[int]] = mapped_column(BigInteger, ForeignKey("shifts.id", ondelete="SET NULL"), nullable=True, index=True)
+    shift_number: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
     order_no: Mapped[int] = mapped_column(BigInteger, nullable=False)
     
     source: Mapped[OrderSource] = mapped_column(psql_enum(OrderSource, name="order_source"), nullable=False, server_default="pos")

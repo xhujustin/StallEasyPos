@@ -8,6 +8,7 @@ export enum ShiftStatus {
 
 export interface Shift {
     id: number;
+    shift_number: number;
     store_id: number;
     start_time: string;
     end_time?: string;

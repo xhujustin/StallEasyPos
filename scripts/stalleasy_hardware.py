@@ -139,6 +139,8 @@ def render_receipt(receipt, width, logo_base64=None):
         y += 7
 
     line(f"單號：{receipt.get('order_no', '')}", f"店家：{receipt.get('store_name', '')}", font=small)
+    if receipt.get("shift_number"):
+        line(f"班次：{receipt['shift_number']}", font=small)
     if receipt.get("business_id"):
         line(f"統一編號：{receipt['business_id']}", font=small)
     line(f"時間：{receipt.get('created_at', '')}", font=small)
@@ -443,7 +445,7 @@ def render_shift_report(report, width, logo_base64=None):
         y += 7
 
     centered("班次明細", heading, 6)
-    centered(f"班次 #{report.get('shift_id', '')}", section, 8)
+    centered(f"班次 {report.get('shift_number') or report.get('shift_id', '')}", section, 8)
     line("開班", report.get("start_time", ""), fonts=small)
     line("結班", report.get("end_time", ""), fonts=small)
     if report.get("opened_by"):

@@ -30,6 +30,7 @@ export const ReceiptPrinter = ({ order }: ReceiptPrinterProps) => {
                     <span>單號: #{order.order_no}</span>
                     <span>店家：StallEasy POS</span>
                 </div>
+                {order.shift_number && <div className="text-xs mt-1">班次：{order.shift_number}</div>}
                 <div className="flex justify-between text-xs mt-1">
                     <span>收銀員: {order.created_by?.nickname || order.created_by?.full_name || order.created_by?.username || order.source}</span>
                     <span>{order.delivery_platform || order.payment_provider || (order.payment_method === 'cash' ? '現金' : order.payment_method)}</span>

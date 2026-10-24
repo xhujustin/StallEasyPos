@@ -164,6 +164,7 @@ export default function ClosingPage() {
         return {
             report_type: 'shift',
             shift_id: closedShift.id,
+            shift_number: closedShift.shift_number,
             start_time: new Date(closedShift.start_time).toLocaleString('zh-TW', { hour12: false }),
             end_time: new Date(closedShift.end_time || new Date()).toLocaleString('zh-TW', { hour12: false }),
             opened_by: closedShift.opened_by?.username || '',

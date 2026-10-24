@@ -55,6 +55,7 @@ class OrderOut(BaseModel):
     id: int
     store_id: int
     shift_id: Optional[int] = None
+    shift_number: Optional[int] = None
     order_no: int
     status: OrderStatus
     order_type: OrderType

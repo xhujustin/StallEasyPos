@@ -1,7 +1,7 @@
 from datetime import datetime
 from enum import Enum
 from typing import Optional
-from sqlalchemy import BigInteger, DateTime, func, ForeignKey, Numeric, Integer, Text, Boolean
+from sqlalchemy import BigInteger, DateTime, func, ForeignKey, Numeric, Integer, Text, Boolean, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import ENUM as PG_ENUM
 from app.models.base import Base, psql_enum
@@ -15,6 +15,7 @@ class Shift(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, index=True)
     store_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("stores.id"), nullable=False, index=True)
+    shift_number: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
     
     start_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     end_time: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -42,6 +43,10 @@ class Shift(Base):
     closed_by: Mapped[Optional["User"]] = relationship("User", foreign_keys=[closed_by_id])
     store: Mapped["Store"] = relationship("Store")
     transactions: Mapped[list["ShiftTransaction"]] = relationship("ShiftTransaction", back_populates="shift")
+
+    __table_args__ = (
+        UniqueConstraint("store_id", "shift_number", name="uq_shifts_store_shift_number"),
+    )
 
 class ShiftTransaction(Base):
     __tablename__ = "shift_transactions"

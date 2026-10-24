@@ -33,6 +33,7 @@ class ShiftTransactionOut(BaseModel):
 
 class ShiftOut(ShiftBase):
     id: int
+    shift_number: int
     store_id: int
     start_time: datetime
     end_time: Optional[datetime] = None

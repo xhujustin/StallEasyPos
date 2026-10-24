@@ -75,7 +75,7 @@ export default function AdminReportsPage() {
     };
 
     const filteredShifts = shifts.filter(s =>
-        searchTerm === '' || s.id.toString().includes(searchTerm)
+        searchTerm === '' || s.shift_number.toString().includes(searchTerm)
     );
     const totalPages = Math.ceil(filteredShifts.length / ITEMS_PER_PAGE);
     const paginatedShifts = filteredShifts.slice(
@@ -107,6 +107,7 @@ export default function AdminReportsPage() {
             storeId: selectedStoreId.toString(),
             storeName: store?.name || '未知店鋪',
             shiftId: shift.id.toString(),
+            shiftNumber: shift.shift_number.toString(),
             startDate: localDate(shift.start_time),
             endDate: localDate(shift.end_time || shift.start_time)
         }).toString();
@@ -154,7 +155,7 @@ export default function AdminReportsPage() {
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
                             <input
                                 type="text"
-                                placeholder="搜尋班次 ID..."
+                                placeholder="搜尋班次編號..."
                                 value={searchTerm}
                                 onChange={(e) => {
                                     setSearchTerm(e.target.value);
@@ -271,7 +272,7 @@ export default function AdminReportsPage() {
                                                             {shift.status === 'open' ? '進行中' : '已結班'}
                                                         </span>
                                                         <span className="text-sm font-black text-gray-900 leading-none">
-                                                            #{shift.id}
+                                                            {shift.shift_number}
                                                         </span>
                                                     </div>
                                                 </td>

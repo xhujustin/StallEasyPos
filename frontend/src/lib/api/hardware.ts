@@ -42,6 +42,7 @@ export const hardwareApi = {
     },
     printOrder: (storeId: number, order: Order, storeName = 'StallEasy POS') => hardwareApi.run(storeId, 'print_receipt', {
         order_no: String(order.order_no),
+        shift_number: order.shift_number,
         store_name: storeName,
         created_at: formatDateTime(order.created_at, order.timezone),
         cashier: order.created_by?.nickname || order.created_by?.full_name || order.created_by?.username || '',

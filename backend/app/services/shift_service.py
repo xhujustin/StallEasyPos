@@ -12,6 +12,7 @@ from app.models.order import Order, OrderItem, OrderStatus, PaymentMethod
 from app.models.product import Product
 from app.models.product_material import ProductMaterial
 from app.models.material import Material
+from app.services.store_clock import get_store_clock
 
 
 def order_cost_query(shift: Shift, end_time: datetime):
@@ -71,8 +72,20 @@ class ShiftService:
         if existing_shift:
             raise HTTPException(status_code=400, detail="已經有開啟的班次，請先關閉當前班次")
 
+        _, business_date = await get_store_clock(db, store_id)
+        daily_prefix = int(business_date.strftime("%Y%m%d")) * 1000
+        number_result = await db.execute(
+            select(func.max(Shift.shift_number)).where(
+                Shift.store_id == store_id,
+                Shift.shift_number > daily_prefix,
+                Shift.shift_number <= daily_prefix + 999,
+            )
+        )
+        shift_number = (number_result.scalar() or daily_prefix) + 1
+
         new_shift = Shift(
             store_id=store_id,
+            shift_number=shift_number,
             start_time=datetime.now(),
             initial_cash=initial_cash,
             opened_by_id=user_id,

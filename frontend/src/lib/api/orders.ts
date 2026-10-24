@@ -86,6 +86,7 @@ export interface Order {
     id: number;
     store_id: number;
     shift_id?: number;
+    shift_number?: number;
     order_no: number;
     status: OrderStatus | string;
     order_type: OrderType | string;

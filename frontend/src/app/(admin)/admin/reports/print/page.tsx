@@ -43,6 +43,8 @@ interface AnalyticsData {
     }[];
     profitability: {
         cogs: number; // Cost of Goods Sold
+        tax: number;
+        revenueExcludingTax: number;
         fixedCosts: number;
         grossProfit: number;
         netProfit: number;
@@ -142,6 +144,8 @@ const calculateAnalytics = (
     const discount = validOrders.reduce((sum, o) => sum + Number(o.discount_amount || 0), 0);
     const refund = 0;
     const netRevenue = validOrders.reduce((sum, o) => sum + Number(o.total_amount || 0), 0);
+    const totalTax = validOrders.reduce((sum, o) => sum + Number(o.tax_amount || 0), 0);
+    const revenueExcludingTax = netRevenue - totalTax;
     const aov = validOrders.length > 0 ? netRevenue / validOrders.length : 0;
 
     // 2. Categories & Products
@@ -206,7 +210,7 @@ const calculateAnalytics = (
     // 4. Payments
     const paymentMap = new Map<string, number>();
     validOrders.forEach(o => {
-        const method = o.payment_method || '未知';
+        const method = o.delivery_platform || o.payment_provider || o.payment_method || '未知';
         paymentMap.set(method, (paymentMap.get(method) || 0) + o.total_amount);
     });
 
@@ -223,7 +227,7 @@ const calculateAnalytics = (
         requestedEndDate || orderDates[orderDates.length - 1] || null,
         fixedCostSettings,
     );
-    const grossProfit = netRevenue - totalCogs;
+    const grossProfit = revenueExcludingTax - totalCogs;
     const netProfit = grossProfit - fixedCosts;
 
     return {
@@ -234,7 +238,7 @@ const calculateAnalytics = (
             net: netRevenue,
             orderCount: validOrders.length,
             aov,
-            tax: netRevenue * 0.05
+            tax: totalTax
         },
         categories: Array.from(categoryStats.entries()).map(([name, stat]) => ({
             name,
@@ -247,7 +251,7 @@ const calculateAnalytics = (
             count: stat.count,
             amount: stat.amount,
             profit: stat.profit
-        })).sort((a, b) => b.amount - a.amount).slice(0, 10),
+        })).sort((a, b) => b.count - a.count || b.amount - a.amount).slice(0, 10),
         hourly: Array.from(hourlyMap.entries()).map(([hour, stat]) => ({
             hour: `${hour.toString().padStart(2, '0')}:00`,
             amount: stat.amount,
@@ -255,11 +259,13 @@ const calculateAnalytics = (
         })),
         profitability: {
             cogs: totalCogs,
+            tax: totalTax,
+            revenueExcludingTax,
             fixedCosts,
             grossProfit,
             netProfit,
-            margin: netRevenue > 0 ? (grossProfit / netRevenue) * 100 : 0,
-            netMargin: netRevenue > 0 ? (netProfit / netRevenue) * 100 : 0,
+            margin: revenueExcludingTax > 0 ? (grossProfit / revenueExcludingTax) * 100 : 0,
+            netMargin: revenueExcludingTax > 0 ? (netProfit / revenueExcludingTax) * 100 : 0,
         },
         payments: Array.from(paymentMap.entries()).map(([method, amount]) => ({
             method,
@@ -460,6 +466,8 @@ const AccountantReportContent = ({
                             <SectionTitle title="成本與毛利" subtitle="Profitability Analysis" />
                             <div className="bg-gray-50 p-4 border border-gray-200">
                                 <StatRow label="食材成本 (COGS)" value={`$${data.profitability.cogs.toLocaleString()}`} />
+                                <StatRow label="營業稅額" value={`$${Math.round(data.profitability.tax).toLocaleString()}`} />
+                                <StatRow label="未稅營收" value={`$${Math.round(data.profitability.revenueExcludingTax).toLocaleString()}`} />
                                 <StatRow label="期間分攤固定成本" value={`$${Math.round(data.profitability.fixedCosts).toLocaleString()}`} />
                                 <div className="my-2 border-t border-gray-300"></div>
                                 <StatRow label="毛利 (Gross Profit)" value={`$${data.profitability.grossProfit.toLocaleString()}`} isBold />
@@ -476,7 +484,7 @@ const AccountantReportContent = ({
                             <div className="space-y-1">
                                 {data.payments.map(p => (
                                     <div key={p.method} className="flex items-center justify-between text-xs py-1 border-b border-gray-100">
-                                        <span className="capitalize">{p.method === 'cash' ? '現金' : p.method === 'linepay' ? 'LINE Pay' : p.method}</span>
+                                        <span>{p.method === 'cash' ? '現金' : p.method === 'linepay' ? '多元支付' : p.method === 'platform_collect' ? '外送平台（未指定）' : p.method}</span>
                                         <div className="flex gap-4 font-mono">
                                             <span>{p.percentage.toFixed(1)}%</span>
                                             <span className="w-20 text-right">${p.amount.toLocaleString()}</span>
@@ -518,7 +526,7 @@ const AccountantReportContent = ({
 
                         {/* Top Products (Section 3.2) */}
                         <div className="report-section">
-                            <SectionTitle title="熱銷商品排行 (TOP 10)" subtitle="Product Performance Leaderboard" />
+                            <SectionTitle title="商品銷售數量排行" subtitle="Product Quantity Leaderboard" />
                             <table className="w-full text-xs">
                                 <thead className="border-b-2 border-black bg-gray-50">
                                     <tr>
@@ -641,6 +649,7 @@ function ReportPrintContent() {
     const startDate = searchParams.get('startDate');
     const endDate = searchParams.get('endDate');
     const shiftId = searchParams.get('shiftId');
+    const shiftNumber = searchParams.get('shiftNumber');
 
     const [loading, setLoading] = useState(true);
     const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
@@ -721,7 +730,7 @@ function ReportPrintContent() {
     }
 
     const dateRangeStr = shiftId
-        ? `班次 #${shiftId}｜${startDate || ''}${startDate !== endDate ? ` ~ ${endDate || ''}` : ''}`
+        ? `班次 ${shiftNumber || shiftId}｜${startDate || ''}${startDate !== endDate ? ` ~ ${endDate || ''}` : ''}`
         : startDate === endDate ? (startDate || '') : `${startDate} ~ ${endDate}`;
 
     return (
