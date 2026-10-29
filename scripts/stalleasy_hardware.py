@@ -732,6 +732,7 @@ def send_to_printer(job, printer):
             sock.sendall(data)
     else:
         path = Path(printer.get("usb_path", "/dev/usb/lp0"))
+        ensure_usb_device_node(path)
         try:
             device_mode = path.stat().st_mode
         except FileNotFoundError as exc:
@@ -740,6 +741,34 @@ def send_to_printer(job, printer):
             raise RuntimeError(f"USB 路徑不是實體印表機裝置：{path}")
         with open(path, "wb", buffering=0) as device:
             device.write(data)
+
+
+def ensure_usb_device_node(path):
+    """Recreate a missing usblp device node after a USB reconnect.
+
+    Some kiosk images load the kernel usblp driver correctly but do not run a
+    device manager that recreates /dev/usb/lpN.  The hardware bridge runs as a
+    system service, so it can safely restore the node from the kernel-exposed
+    major/minor pair before printing.
+    """
+    path = Path(path)
+    if path.exists() or path.parent != Path("/dev/usb") or not path.name.startswith("lp"):
+        return
+
+    device_number_path = Path("/sys/class/usbmisc") / path.name / "dev"
+    try:
+        major_text, minor_text = device_number_path.read_text(encoding="ascii").strip().split(":", 1)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        os.mknod(
+            path,
+            stat.S_IFCHR | 0o666,
+            os.makedev(int(major_text), int(minor_text)),
+        )
+        os.chmod(path, 0o666)
+    except FileExistsError:
+        return
+    except (OSError, ValueError) as exc:
+        raise RuntimeError(f"USB 印表機已連接，但無法建立裝置節點：{path} ({exc})") from exc
 
 
 def send(job):
@@ -755,6 +784,11 @@ def send(job):
 
 
 def usb_devices():
+    # Restore nodes for every usblp device currently known by the kernel before
+    # scanning /dev. This also makes a reconnected printer selectable again.
+    for sys_device in sorted(Path("/sys/class/usbmisc").glob("lp*")):
+        ensure_usb_device_node(Path("/dev/usb") / sys_device.name)
+
     devices = []
     for path in sorted(Path("/dev/usb").glob("lp*")):
         try:

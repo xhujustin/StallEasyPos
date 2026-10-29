@@ -23,6 +23,7 @@ export interface CartItem {
 export interface HeldOrder {
     id: string;
     storeId: number;
+    shiftId?: number;
     orderNo?: number;
     createdAt: string;
     items: CartItem[];
@@ -39,16 +40,17 @@ interface CartState {
     currentOrderNo: number | null;
     currentPrintedOutputs: string[];
     initStore: (storeId: number) => void;
-    initializeOrderNumbers: (storeId: number, nextOrderNo: number) => void;
+    initializeOrderNumbers: (storeId: number, nextOrderNo: number, shiftId: number) => void;
+    resetOrderNumbers: (storeId: number) => void;
     // addToCart now accepts more details
     addToCart: (product: { id: number; name: string; price: number; image_url?: string }, quantity?: number, options?: CartItemOption[], note?: string) => void;
     removeFromCart: (cartItemId: string) => void;
     updateQuantity: (cartItemId: string, quantity: number) => void;
     updateCartItem: (cartItemId: string, quantity: number, options: CartItemOption[], note: string, basePrice: number) => void;
     clearCart: () => void;
-    holdCart: (pickupAt?: string) => void;
+    holdCart: (pickupAt?: string, shiftId?: number) => void;
     markHeldOrderPrinted: (heldOrderId: string, output: string) => void;
-    restoreHeldOrder: (heldOrderId: string) => void;
+    restoreHeldOrder: (heldOrderId: string, activeShiftId?: number) => void;
     deleteHeldOrder: (heldOrderId: string) => void;
     totalAmount: () => number;
 }
@@ -70,8 +72,10 @@ export const useCartStore = create<CartState>()(
                     set({ storeId });
                 }
             },
-            initializeOrderNumbers: (storeId, nextOrderNo) => set((state) => {
-                const storeOrders = state.heldOrders.filter((order) => order.storeId === storeId);
+            initializeOrderNumbers: (storeId, nextOrderNo, shiftId) => set((state) => {
+                const storeOrders = state.heldOrders.filter(
+                    (order) => order.storeId === storeId && order.shiftId === shiftId
+                );
                 const usedNumbers = new Set(
                     storeOrders
                         .map((order) => order.orderNo)
@@ -101,6 +105,9 @@ export const useCartStore = create<CartState>()(
                     currentOrderNo: Math.max(nextOrderNo, highestHeldNumber + 1),
                 };
             }),
+            resetOrderNumbers: (storeId) => set((state) => ({
+                currentOrderNo: state.storeId === storeId ? null : state.currentOrderNo,
+            })),
             addToCart: (product, quantity = 1, options = [], note = '') => {
                 set((state) => {
                     // Generate a unique key for grouping (optional but good for comparison)
@@ -170,13 +177,14 @@ export const useCartStore = create<CartState>()(
                     currentPrintedOutputs: [],
                 })),
             clearCart: () => set({ items: [], currentOrderNo: null, currentPrintedOutputs: [] }),
-            holdCart: (pickupAt) => set((state) => {
+            holdCart: (pickupAt, shiftId) => set((state) => {
                 if (!state.storeId || state.items.length === 0) return state;
                 const heldOrder: HeldOrder = {
                     id: (typeof crypto !== 'undefined' && crypto.randomUUID)
                         ? crypto.randomUUID()
                         : `${Date.now()}-${Math.random().toString(16).slice(2)}`,
                     storeId: state.storeId,
+                    shiftId,
                     orderNo: state.currentOrderNo || undefined,
                     createdAt: new Date().toISOString(),
                     items: state.items.map(item => ({
@@ -199,7 +207,7 @@ export const useCartStore = create<CartState>()(
                     ? { ...order, printedOutputs: Array.from(new Set([...(order.printedOutputs || []), output])) }
                     : order),
             })),
-            restoreHeldOrder: (heldOrderId) => set((state) => {
+            restoreHeldOrder: (heldOrderId, activeShiftId) => set((state) => {
                 const heldOrder = state.heldOrders.find(order => order.id === heldOrderId);
                 if (!heldOrder || heldOrder.storeId !== state.storeId) return state;
                 return {
@@ -207,7 +215,9 @@ export const useCartStore = create<CartState>()(
                         ...item,
                         selectedOptions: item.selectedOptions.map(option => ({ ...option })),
                     })),
-                    currentOrderNo: heldOrder.orderNo || state.currentOrderNo,
+                    currentOrderNo: heldOrder.shiftId === activeShiftId
+                        ? heldOrder.orderNo || state.currentOrderNo
+                        : state.currentOrderNo,
                     currentPrintedOutputs: [...(heldOrder.printedOutputs || [])],
                     heldOrders: state.heldOrders.filter(order => order.id !== heldOrderId),
                 };

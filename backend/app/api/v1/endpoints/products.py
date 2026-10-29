@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.deps import get_db, get_current_user_id
 from app.services.product_service import ProductService
 from app.services.upload_service import UploadService
-from app.schemas.products import ProductCreate, ProductUpdate, ProductOut
+from app.schemas.products import ProductCreate, ProductUpdate, ProductOut, ProductReorder
 from app.schemas.common import ResponseBase
 
 router = APIRouter()
@@ -34,6 +34,19 @@ async def list_products(
     """
     products = await ProductService.get_store_products(db, store_id, current_user_id)
     return ResponseBase(data=products)
+
+@router.put("/reorder", response_model=ResponseBase[bool])
+async def reorder_products(
+    store_id: Annotated[int, Query()],
+    reorder_in: ProductReorder,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user_id: Annotated[int, Depends(get_current_user_id)]
+):
+    """儲存店鋪商品顯示順序。"""
+    await ProductService.reorder_products(
+        db, store_id, reorder_in.product_ids, current_user_id
+    )
+    return ResponseBase(data=True)
 
 @router.patch("/{product_id}", response_model=ResponseBase[ProductOut])
 async def update_product(

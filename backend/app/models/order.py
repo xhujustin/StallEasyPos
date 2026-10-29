@@ -1,7 +1,7 @@
 from datetime import datetime, date
 from enum import Enum
 from typing import Optional, List
-from sqlalchemy import BigInteger, Text, Numeric, Boolean, DateTime, Date, func, ForeignKey, UniqueConstraint, Index, Identity
+from sqlalchemy import BigInteger, Text, Numeric, Boolean, DateTime, Date, func, ForeignKey, UniqueConstraint, Index, Identity, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import ENUM as PG_ENUM, JSONB
 from app.models.base import Base, psql_enum
@@ -80,8 +80,19 @@ class Order(Base):
     created_by: Mapped[Optional["User"]] = relationship(foreign_keys=[created_by_id])
 
     __table_args__ = (
-        UniqueConstraint("store_id", "business_date", "order_no", name="uq_orders_store_date_orderno"),
         UniqueConstraint("store_id", "idempotency_key", name="uq_orders_store_idempotency"),
+        Index(
+            "uq_orders_store_shift_orderno",
+            "store_id", "shift_id", "order_no",
+            unique=True,
+            postgresql_where=text("shift_id IS NOT NULL"),
+        ),
+        Index(
+            "uq_orders_store_date_orderno_without_shift",
+            "store_id", "business_date", "order_no",
+            unique=True,
+            postgresql_where=text("shift_id IS NULL"),
+        ),
         Index("idx_orders_store_created", "store_id", "created_at"),
         Index("idx_orders_store_date", "store_id", "business_date"),
         Index("idx_orders_store_status", "store_id", "status"),

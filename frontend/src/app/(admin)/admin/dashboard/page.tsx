@@ -13,9 +13,17 @@ export default function AdminDashboard() {
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [trendRange, setTrendRange] = useState<number>(7); // 7, 30, 180, 365
+    const [topProductRange, setTopProductRange] = useState<number>(30);
     const [activeDay, setActiveDay] = useState<number | null>(null);
 
     const rangeOptions = [7, 30, 180, 365];
+    const topProductRangeOptions = [
+        { days: 1, label: '今日' },
+        { days: 7, label: '近 7 天' },
+        { days: 30, label: '近 30 天' },
+        { days: 180, label: '半年' },
+        { days: 365, label: '一年' },
+    ];
 
     const handleRangeChange = (direction: 'prev' | 'next') => {
         const currentIndex = rangeOptions.indexOf(trendRange);
@@ -26,13 +34,22 @@ export default function AdminDashboard() {
         }
     };
 
+    const handleTopProductRangeChange = (direction: 'prev' | 'next') => {
+        const currentIndex = topProductRangeOptions.findIndex((option) => option.days === topProductRange);
+        const nextIndex = direction === 'next' ? currentIndex + 1 : currentIndex - 1;
+
+        if (nextIndex >= 0 && nextIndex < topProductRangeOptions.length) {
+            setTopProductRange(topProductRangeOptions[nextIndex].days);
+        }
+    };
+
     useEffect(() => {
         const fetchStats = async () => {
             if (!storeId) return;
             setIsLoading(true);
             setError(null);
             try {
-                const response = await dashboardApi.getStats(storeId, trendRange);
+                const response = await dashboardApi.getStats(storeId, trendRange, topProductRange);
                 setStats(response.data.data);
             } catch (err) {
                 console.error("Failed to load dashboard stats:", err);
@@ -43,7 +60,7 @@ export default function AdminDashboard() {
         };
 
         fetchStats();
-    }, [storeId, trendRange]);
+    }, [storeId, trendRange, topProductRange]);
 
     if (!storeId) {
         return <div className="p-8 text-center text-slate-500">請先選擇店鋪</div>;
@@ -189,8 +206,31 @@ export default function AdminDashboard() {
                 </Card>
 
                 <Card className="h-[400px] flex flex-col">
-                    <CardHeader>
-                        <CardTitle>熱門商品 (近30日)</CardTitle>
+                    <CardHeader className="flex flex-row items-center justify-between">
+                        <CardTitle>熱門商品</CardTitle>
+                        <div className="flex items-center gap-2" role="group" aria-label="熱門商品統計區間">
+                            <Button
+                                variant="outline"
+                                size="icon"
+                                aria-label="縮短熱門商品統計區間"
+                                onClick={() => handleTopProductRangeChange('prev')}
+                                disabled={topProductRange === topProductRangeOptions[0].days}
+                            >
+                                <ChevronLeft className="h-4 w-4" />
+                            </Button>
+                            <span className="font-mono w-24 text-center font-bold" aria-live="polite">
+                                {topProductRangeOptions.find((option) => option.days === topProductRange)?.label}
+                            </span>
+                            <Button
+                                variant="outline"
+                                size="icon"
+                                aria-label="延長熱門商品統計區間"
+                                onClick={() => handleTopProductRangeChange('next')}
+                                disabled={topProductRange === topProductRangeOptions[topProductRangeOptions.length - 1].days}
+                            >
+                                <ChevronRight className="h-4 w-4" />
+                            </Button>
+                        </div>
                     </CardHeader>
                     <CardContent className="flex-1 overflow-y-auto">
                         <div className="space-y-4">

@@ -15,6 +15,16 @@ import { shiftApi } from '@/lib/api/shifts';
 import { hardwareApi } from '@/lib/api/hardware';
 import { dateKeyInTimeZone, formatTime } from '@/lib/utils';
 import { settingsApi } from '@/lib/api/settings';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+
+type ReprintOutput = 'receipt' | 'kitchen' | 'number_ticket' | 'label';
+
+const REPRINT_OPTIONS: { value: ReprintOutput; label: string }[] = [
+    { value: 'receipt', label: '顧客收據' },
+    { value: 'kitchen', label: '內場單' },
+    { value: 'number_ticket', label: '號碼牌' },
+    { value: 'label', label: '商品貼紙' },
+];
 
 export default function OrdersPage() {
     const { selectedStoreId: storeId, user } = useAuthStore();
@@ -23,6 +33,10 @@ export default function OrdersPage() {
     const [isLoading, setIsLoading] = useState(false);
     const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
     const [isDetailOpen, setIsDetailOpen] = useState(false);
+    const [reprintOrder, setReprintOrder] = useState<Order | null>(null);
+    const [configuredOutputs, setConfiguredOutputs] = useState<ReprintOutput[]>([]);
+    const [loadingReprintOptions, setLoadingReprintOptions] = useState(false);
+    const [printingOutput, setPrintingOutput] = useState<ReprintOutput | null>(null);
 
     const fetchOrders = async () => {
         if (!storeId) return;
@@ -79,16 +93,54 @@ export default function OrdersPage() {
         fetchOrders();
     }, [storeId, searchTerm]);
 
-    const handlePrint = async (order: Order, e: React.MouseEvent) => {
+    const openReprintMenu = async (order: Order, e: React.MouseEvent) => {
         e.stopPropagation();
         if (!storeId) return;
+        setReprintOrder(order);
+        setConfiguredOutputs([]);
+        setLoadingReprintOptions(true);
+        try {
+            const device = await settingsApi.getDeviceSettings(storeId);
+            const printers = Array.isArray(device.printers)
+                ? device.printers.filter((printer: { enabled?: boolean }) => printer.enabled !== false)
+                : [];
+            const outputs = printers.flatMap((printer: { outputs?: string[] }) =>
+                Array.isArray(printer.outputs) ? printer.outputs : []
+            );
+            const legacyOutputs: string[] = [];
+            if (device.auto_print_receipt) legacyOutputs.push('receipt');
+            if (device.print_number_ticket) legacyOutputs.push('number_ticket');
+            setConfiguredOutputs(Array.from(new Set([...outputs, ...legacyOutputs])).filter(
+                (output): output is ReprintOutput => REPRINT_OPTIONS.some((option) => option.value === output)
+            ));
+        } catch (error) {
+            console.error('Failed to load printer outputs:', error);
+            toast.error('無法載入補印設定');
+        } finally {
+            setLoadingReprintOptions(false);
+        }
+    };
+
+    const handleReprint = async (output: ReprintOutput) => {
+        if (!storeId || !reprintOrder || printingOutput) return;
+        setPrintingOutput(output);
         try {
             const storeName = user?.stores?.find(store => store.id === storeId)?.name || 'StallEasy POS';
-            await hardwareApi.printOrder(storeId, order, storeName);
-            toast.success('收據已送至出單機');
+            const queued = output === 'receipt'
+                ? await hardwareApi.printOrder(storeId, reprintOrder, storeName)
+                : output === 'kitchen'
+                    ? await hardwareApi.printKitchen(storeId, reprintOrder, storeName)
+                    : output === 'number_ticket'
+                        ? await hardwareApi.printNumberTicket(storeId, reprintOrder, storeName)
+                        : await hardwareApi.printLabels(storeId, reprintOrder, storeName);
+            await hardwareApi.waitForJob(queued.data);
+            toast.success(`${REPRINT_OPTIONS.find((option) => option.value === output)?.label}補印完成`);
+            setReprintOrder(null);
         } catch (error) {
-            console.error('Receipt print failed:', error);
-            toast.error('列印失敗，請檢查出單機連線');
+            console.error('Reprint failed:', error);
+            toast.error(error instanceof Error ? error.message : '補印失敗，請檢查出單機連線');
+        } finally {
+            setPrintingOutput(null);
         }
     };
 
@@ -245,7 +297,8 @@ export default function OrdersPage() {
                                                     variant="ghost"
                                                     size="icon"
                                                     className="h-8 w-8 text-slate-500 hover:text-slate-900"
-                                                    onClick={(e) => handlePrint(order, e)}
+                                                    onClick={(e) => void openReprintMenu(order, e)}
+                                                    title="補印"
                                                 >
                                                     <Printer className="h-4 w-4" />
                                                 </Button>
@@ -290,6 +343,43 @@ export default function OrdersPage() {
                     }
                 }}
             />
+
+            <Dialog open={reprintOrder !== null} onOpenChange={(open) => !open && !printingOutput && setReprintOrder(null)}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>補印訂單 #{reprintOrder?.order_no}</DialogTitle>
+                        <DialogDescription>選擇要補印的內容；只有印表機已設定的輸出類型可以使用。</DialogDescription>
+                    </DialogHeader>
+                    {loadingReprintOptions ? (
+                        <div className="flex items-center justify-center gap-2 py-8 text-sm text-slate-500">
+                            <Loader2 className="h-4 w-4 animate-spin" />載入印表機設定...
+                        </div>
+                    ) : configuredOutputs.length === 0 ? (
+                        <div className="rounded-lg bg-amber-50 p-4 text-sm text-amber-800">
+                            尚未設定可補印的輸出內容，請先到 POS 設定指派印表機。
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-2 gap-3">
+                            {REPRINT_OPTIONS.map((option) => {
+                                const enabled = configuredOutputs.includes(option.value);
+                                return (
+                                    <Button
+                                        key={option.value}
+                                        type="button"
+                                        variant="outline"
+                                        disabled={!enabled || printingOutput !== null}
+                                        onClick={() => void handleReprint(option.value)}
+                                        className="h-12"
+                                    >
+                                        {printingOutput === option.value ? <Loader2 className="animate-spin" /> : <Printer />}
+                                        {option.label}
+                                    </Button>
+                                );
+                            })}
+                        </div>
+                    )}
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }

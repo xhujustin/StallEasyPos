@@ -58,7 +58,7 @@ class ShiftService:
         ).where(
             Shift.store_id == store_id,
             Shift.status == ShiftStatus.OPEN
-        )
+        ).order_by(Shift.start_time.desc(), Shift.id.desc())
         result = await db.execute(query)
         return result.scalars().first()
 

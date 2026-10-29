@@ -1,5 +1,5 @@
 from typing import List, Optional
-from sqlalchemy import select, delete
+from sqlalchemy import select, delete, func
 from sqlalchemy.orm import joinedload
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException
@@ -28,8 +28,16 @@ class ProductService:
         materials_data = product_in.materials
         attributes_data = product_in.attributes
 
+        max_order_result = await db.execute(
+            select(func.coalesce(func.max(Product.display_order), 0)).where(
+                Product.store_id == store_id
+            )
+        )
+        next_display_order = int(max_order_result.scalar_one()) + 1
+
         product = Product(
             store_id=store_id,
+            display_order=next_display_order,
             **product_data
         )
         db.add(product)
@@ -100,10 +108,39 @@ class ProductService:
         stmt = select(Product).options(
             joinedload(Product.materials).joinedload(ProductMaterial.material),
             joinedload(Product.attributes).joinedload(ProductAttribute.options).joinedload(ProductAttributeOption.materials).joinedload(OptionMaterial.material)
-        ).where(Product.store_id == store_id)
+        ).where(Product.store_id == store_id).order_by(
+            Product.display_order.asc(), Product.id.asc()
+        )
         
         result = await db.execute(stmt)
         return result.scalars().unique().all()
+
+    @staticmethod
+    async def reorder_products(
+        db: AsyncSession, store_id: int, product_ids: List[int], user_id: int
+    ) -> None:
+        """以傳入的完整商品 ID 清單更新店鋪商品順序。"""
+        await StoreService.get_store_if_authorized(db, store_id, user_id)
+
+        if len(product_ids) != len(set(product_ids)):
+            raise HTTPException(status_code=400, detail="Duplicate product IDs")
+
+        result = await db.execute(
+            select(Product).where(Product.store_id == store_id)
+        )
+        products = result.scalars().all()
+        products_by_id = {product.id: product for product in products}
+
+        if set(product_ids) != set(products_by_id):
+            raise HTTPException(
+                status_code=400,
+                detail="Product list must contain every product in this store",
+            )
+
+        for display_order, product_id in enumerate(product_ids, start=1):
+            products_by_id[product_id].display_order = display_order
+
+        await db.commit()
 
     @staticmethod
     async def update_product(

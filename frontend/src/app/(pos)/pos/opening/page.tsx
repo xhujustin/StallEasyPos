@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { shiftApi } from '@/lib/api/shifts';
+import { useCartStore } from '@/lib/store/cart-store';
 import { settingsApi } from '@/lib/api/settings';
 import { Calculator, Delete, Equal, Coins, Settings, Power } from 'lucide-react';
 import { Card } from '@/components/ui/card';
@@ -124,6 +125,7 @@ export default function ShiftOpeningPage() {
 
         try {
             await shiftApi.start(selectedStoreId, { initial_cash: cash });
+            useCartStore.getState().resetOrderNumbers(selectedStoreId);
             window.dispatchEvent(new Event('shift-data-changed'));
             router.push('/pos');
         } catch (err: any) {

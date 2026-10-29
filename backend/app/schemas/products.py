@@ -20,6 +20,7 @@ class ProductCreate(BaseModel):
     price: float
     cost: Optional[float] = None
     category: Optional[str] = None
+    is_active: bool = True
     image_url: Optional[str] = None
     attributes: Optional[List[ProductAttributeCreate]] = None
     materials: Optional[List[ProductMaterialCreate]] = None
@@ -34,6 +35,9 @@ class ProductUpdate(BaseModel):
     attributes: Optional[List[ProductAttributeUpdate]] = None
     materials: Optional[List[ProductMaterialCreate]] = None
 
+class ProductReorder(BaseModel):
+    product_ids: List[int]
+
 class ProductOut(BaseModel):
     id: int
     store_id: int
@@ -42,6 +46,7 @@ class ProductOut(BaseModel):
     cost: Optional[float]
     category: Optional[str]
     is_active: bool
+    display_order: int
     attributes: List[ProductAttributeOut] = []
     image_url: Optional[str]
     materials: List[ProductMaterialOut] = []

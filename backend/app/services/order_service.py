@@ -22,15 +22,21 @@ from app.services.store_clock import get_store_clock
 class OrderService:
     @staticmethod
     async def get_next_order_no(db: AsyncSession, store_id: int, user_id: int) -> int:
-        """取得店鋪今日下一個可用單號。"""
+        """取得店鋪目前班次的下一個可用單號。"""
         await StoreService.get_store_if_authorized(db, store_id, user_id)
         _, business_date = await get_store_clock(db, store_id)
-        result = await db.execute(
+        current_shift = await ShiftService.get_active_shift(db, store_id)
+        query = (
             select(func.max(Order.order_no))
             .where(Order.store_id == store_id)
-            .where(Order.business_date == business_date)
             .where(Order.order_no < 10_000_000)
         )
+        if current_shift:
+            query = query.where(Order.shift_id == current_shift.id)
+        else:
+            # 保留未開班建單的既有行為，以營業日為編號範圍。
+            query = query.where(Order.shift_id.is_(None)).where(Order.business_date == business_date)
+        result = await db.execute(query)
         return (result.scalar() or 0) + 1
 
     @staticmethod
@@ -68,15 +74,21 @@ class OrderService:
         if existing_order:
             return existing_order
 
-        # 3. Generate Order No (Daily Reset)
-        # Sequence: 1, 2, 3... resets every business day per store.
+        # 3. Generate Order No (Shift Reset)
+        # Sequence: 1, 2, 3... resets whenever a new shift is opened.
         
-        res = await db.execute(
+        order_number_query = (
             select(func.max(Order.order_no))
             .where(Order.store_id == store_id)
-            .where(Order.business_date == business_date)
             .where(Order.order_no < 10_000_000) # Ignore legacy date-based numbers
         )
+        if shift_id is not None:
+            order_number_query = order_number_query.where(Order.shift_id == shift_id)
+        else:
+            order_number_query = order_number_query.where(Order.shift_id.is_(None)).where(
+                Order.business_date == business_date
+            )
+        res = await db.execute(order_number_query)
         max_no = res.scalar() or 0
         new_order_no = max_no + 1
 
@@ -84,12 +96,18 @@ class OrderService:
         # 則回退到資料庫目前的下一號，避免唯一鍵衝突。
         requested_order_no = order_in.order_no
         if requested_order_no and 0 < requested_order_no < 10_000_000:
-            requested_result = await db.execute(
+            requested_query = (
                 select(Order.id)
                 .where(Order.store_id == store_id)
-                .where(Order.business_date == business_date)
                 .where(Order.order_no == requested_order_no)
             )
+            if shift_id is not None:
+                requested_query = requested_query.where(Order.shift_id == shift_id)
+            else:
+                requested_query = requested_query.where(Order.shift_id.is_(None)).where(
+                    Order.business_date == business_date
+                )
+            requested_result = await db.execute(requested_query)
             if requested_result.scalar_one_or_none() is None:
                 new_order_no = requested_order_no
 

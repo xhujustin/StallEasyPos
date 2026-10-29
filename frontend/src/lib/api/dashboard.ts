@@ -25,6 +25,8 @@ export interface DashboardStats {
 }
 
 export const dashboardApi = {
-    getStats: (storeId: number, trendDays: number = 7) =>
-        apiClient.get<ResponseBase<DashboardStats>>(`/dashboard/stats?store_id=${storeId}&trend_days=${trendDays}`),
+    getStats: (storeId: number, trendDays: number = 7, topProductDays: number = 30) =>
+        apiClient.get<ResponseBase<DashboardStats>>(
+            `/dashboard/stats?store_id=${storeId}&trend_days=${trendDays}&top_product_days=${topProductDays}`
+        ),
 };

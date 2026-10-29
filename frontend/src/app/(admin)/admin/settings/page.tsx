@@ -854,7 +854,7 @@ export default function AdminSettingsPage() {
                                     </select>
                                     <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={16} />
                                 </div>
-                                <p className="mt-2 text-[10px] text-gray-400">套用於每日單號重置、日結、儀表板營業日及訂單時間。</p>
+                                <p className="mt-2 text-[10px] text-gray-400">套用於班次單號重置、日結、儀表板營業日及訂單時間。</p>
                             </div>
                         </div>
                     </div>

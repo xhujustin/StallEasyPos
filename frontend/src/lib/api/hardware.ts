@@ -23,8 +23,26 @@ export const hardwareApi = {
         return response.data;
     },
 
+    waitForJob: async (jobId: string, attempts = 30) => {
+        for (let attempt = 0; attempt < attempts; attempt += 1) {
+            await new Promise(resolve => setTimeout(resolve, 300));
+            const response = await apiClient.get<ResponseBase<{
+                status: 'pending' | 'completed' | 'failed';
+                error?: string;
+            }>>(`/hardware/jobs/${jobId}`);
+            if (response.data.data.status === 'completed') return response.data.data;
+            if (response.data.data.status === 'failed') {
+                throw new Error(response.data.data.error || '硬體工作執行失敗');
+            }
+        }
+        throw new Error('硬體工作執行逾時');
+    },
+
     openDrawer: (storeId: number) => hardwareApi.run(storeId, 'open_drawer'),
-    testPrint: (storeId: number, printerId?: string) => hardwareApi.run(storeId, 'test_print', undefined, printerId),
+    testPrint: async (storeId: number, printerId?: string) => {
+        const queued = await hardwareApi.run(storeId, 'test_print', undefined, printerId);
+        return hardwareApi.waitForJob(queued.data);
+    },
     scanDevices: async (storeId: number): Promise<DetectedPrinter[]> => {
         const queued = await hardwareApi.run(storeId, 'scan_devices');
         const jobId = queued.data;

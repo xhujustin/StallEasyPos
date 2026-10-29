@@ -19,14 +19,17 @@ import {
 } from '@dnd-kit/sortable';
 import { SortableOption } from './SortableOption';
 import { SortableAttributeGroup } from './SortableAttributeGroup';
+import CopyAttributesDialog from './CopyAttributesDialog';
 
 interface AttributeManagerProps {
     attributes: ProductAttribute[];
     onChange: (attributes: ProductAttribute[]) => void;
     materials: Material[];
+    currentProductId?: number;
+    storeId?: number;
 }
 
-export default function AttributeManager({ attributes, onChange, materials }: AttributeManagerProps) {
+export default function AttributeManager({ attributes, onChange, materials, currentProductId, storeId }: AttributeManagerProps) {
     const [expandedGroups, setExpandedGroups] = useState<number[]>([]);
 
     // 設定拖曳感測器
@@ -176,14 +179,23 @@ export default function AttributeManager({ attributes, onChange, materials }: At
         <div className="space-y-6">
             <div className="flex justify-between items-center">
                 <h3 className="text-lg font-medium text-gray-900">客製化選項設定</h3>
-                <button
-                    type="button"
-                    onClick={addAttributeGroup}
-                    className="flex items-center gap-1 px-3 py-1.5 bg-blue-50 text-blue-600 rounded-md hover:bg-blue-100 text-sm font-medium transition-colors"
-                >
-                    <Plus size={16} />
-                    新增屬性群組
-                </button>
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                    {currentProductId !== undefined && storeId !== undefined && (
+                        <CopyAttributesDialog
+                            attributes={attributes}
+                            currentProductId={currentProductId}
+                            storeId={storeId}
+                        />
+                    )}
+                    <button
+                        type="button"
+                        onClick={addAttributeGroup}
+                        className="flex items-center gap-1 px-3 py-1.5 bg-blue-50 text-blue-600 rounded-md hover:bg-blue-100 text-sm font-medium transition-colors"
+                    >
+                        <Plus size={16} />
+                        新增屬性群組
+                    </button>
+                </div>
             </div>
 
             {attributes.length === 0 ? (
@@ -211,6 +223,8 @@ export default function AttributeManager({ attributes, onChange, materials }: At
                                     toggleGroup={toggleGroup}
                                     updateAttributeGroup={updateAttributeGroup}
                                     removeAttributeGroup={removeAttributeGroup}
+                                    currentProductId={currentProductId}
+                                    storeId={storeId}
                                 >
                                     <div className="mb-2 flex items-center justify-between">
                                         <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">選項列表</span>

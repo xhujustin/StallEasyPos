@@ -3,6 +3,7 @@ import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { GripVertical, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
 import { ProductAttribute } from '@/lib/api/products';
+import CopyAttributesDialog from './CopyAttributesDialog';
 
 interface SortableAttributeGroupProps {
     id: string; // 用於 dnd-kit (例如 "group-123")
@@ -12,6 +13,8 @@ interface SortableAttributeGroupProps {
     toggleGroup: (index: number) => void;
     updateAttributeGroup: (index: number, updates: Partial<ProductAttribute>) => void;
     removeAttributeGroup: (index: number) => void;
+    currentProductId?: number;
+    storeId?: number;
     children: React.ReactNode; // 選項列表內容
 }
 
@@ -23,6 +26,8 @@ export function SortableAttributeGroup({
     toggleGroup,
     updateAttributeGroup,
     removeAttributeGroup,
+    currentProductId,
+    storeId,
     children
 }: SortableAttributeGroupProps) {
     const {
@@ -98,14 +103,25 @@ export function SortableAttributeGroup({
                     </div>
                 </div>
 
-                <button
-                    type="button"
-                    onClick={() => removeAttributeGroup(groupIndex)}
-                    className="text-red-500 hover:text-red-700 transition-colors ml-2"
-                    title="刪除群組"
-                >
-                    <Trash2 size={18} />
-                </button>
+                <div className="ml-2 flex items-center gap-2">
+                    {currentProductId !== undefined && storeId !== undefined && (
+                        <CopyAttributesDialog
+                            attributes={[attribute]}
+                            currentProductId={currentProductId}
+                            storeId={storeId}
+                            singleGroup
+                            compact
+                        />
+                    )}
+                    <button
+                        type="button"
+                        onClick={() => removeAttributeGroup(groupIndex)}
+                        className="text-red-500 hover:text-red-700 transition-colors"
+                        title="刪除群組"
+                    >
+                        <Trash2 size={18} />
+                    </button>
+                </div>
             </div>
 
             {/* Options List (Children) */}

@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import Providers from "./providers"; // Import the client provider
 import SyncInitializer from "@/components/sync-initializer";
+import { Toaster } from "@/components/ui/sonner";
 
 export const metadata: Metadata = {
   title: "StallEasy POS",
@@ -35,6 +36,7 @@ export default function RootLayout({
         <Providers>
           <SyncInitializer />
           {children}
+          <Toaster position="top-center" richColors />
         </Providers>
       </body>
     </html>

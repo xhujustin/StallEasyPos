@@ -11,7 +11,13 @@ from app.services.store_clock import get_store_clock
 
 class DashboardService:
     @staticmethod
-    async def get_stats(db: AsyncSession, store_id: int, user_id: int, trend_days: int = 7) -> DashboardStats:
+    async def get_stats(
+        db: AsyncSession,
+        store_id: int,
+        user_id: int,
+        trend_days: int = 7,
+        top_product_days: int = 30,
+    ) -> DashboardStats:
         # Check permission
         await StoreService.get_store_if_authorized(db, store_id, user_id)
         
@@ -206,8 +212,8 @@ class DashboardService:
                     order_count=order_count
                 ))
 
-        # 4. Top Products (All time or last month? Let's do Last 30 Days for relevance)
-        thirty_days_ago = today - timedelta(days=30)
+        # 4. Top Products for the selected inclusive date range.
+        top_products_start_date = today - timedelta(days=top_product_days - 1)
         top_products_query = (
             select(
                 Product.id,
@@ -219,7 +225,7 @@ class DashboardService:
             .join(Order, OrderItem.order_id == Order.id)
             .where(
                 Order.store_id == store_id,
-                Order.business_date >= thirty_days_ago,
+                Order.business_date >= top_products_start_date,
                 Order.status.in_(paid_statuses)
             )
             .group_by(Product.id, Product.name)

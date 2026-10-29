@@ -6,8 +6,10 @@ import { useAuthStore } from '@/lib/store/auth-store';
 import { productApi, ProductUpdate, Product, ProductMaterial, ProductMaterialCreate, ProductAttribute } from '@/lib/api/products';
 import { categoryApi, Category } from '@/lib/api/categories';
 import { materialApi, Material } from '@/lib/api/materials';
-import { ArrowLeft, Plus, Trash2, Calculator, Settings, Info, Upload } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Calculator, Settings, Info, Upload, Copy, Loader2 } from 'lucide-react';
 import AttributeManager from '@/components/admin/products/AttributeManager';
+import CopyRecipeDialog, { createRecipePayload } from '@/components/admin/products/CopyRecipeDialog';
+import { createAttributesPayload } from '@/components/admin/products/CopyAttributesDialog';
 import { Button } from '@/components/ui/button';
 import { cn, getFullImageUrl } from '@/lib/utils';
 
@@ -21,6 +23,7 @@ export default function EditProductPage() {
     const [materials, setMaterials] = useState<Material[]>([]);
     const [loading, setLoading] = useState(false);
     const [loadingProduct, setLoadingProduct] = useState(true);
+    const [duplicatingProduct, setDuplicatingProduct] = useState(false);
 
     // 配方相關 State
     const [productMaterials, setProductMaterials] = useState<ProductMaterial[]>([]);
@@ -204,6 +207,29 @@ export default function EditProductPage() {
         router.push('/admin/products');
     };
 
+    const handleDuplicateProduct = async () => {
+        if (!selectedStoreId || duplicatingProduct) return;
+        if (!confirm(`確定要建立「${formData.name}」的完整副本嗎？`)) return;
+
+        try {
+            setDuplicatingProduct(true);
+            const duplicatedProduct = await productApi.createProduct(selectedStoreId, {
+                ...formData,
+                name: `${formData.name}（副本）`,
+                price: formData.price || 0,
+                materials: createRecipePayload(productMaterials),
+                attributes: createAttributesPayload(productAttributes),
+            });
+            alert('商品副本建立成功');
+            router.push(`/admin/products/${duplicatedProduct.id}/edit`);
+        } catch (error) {
+            console.error('複製商品失敗:', error);
+            alert('複製商品失敗，請稍後再試');
+        } finally {
+            setDuplicatingProduct(false);
+        }
+    };
+
     if (!mounted || loadingProduct) {
         return (
             <div className="flex items-center justify-center min-h-screen">
@@ -223,9 +249,15 @@ export default function EditProductPage() {
                     <ArrowLeft size={18} className="group-hover:-translate-x-1 transition-transform" />
                     <span className="text-sm font-medium">返回商品列表</span>
                 </button>
-                <div className="flex items-end gap-3">
-                    <h1 className="text-3xl font-bold text-gray-800">編輯商品</h1>
-                    <span className="text-gray-400 text-sm mb-1">ID: #{productId}</span>
+                <div className="flex flex-wrap items-end justify-between gap-4">
+                    <div className="flex items-end gap-3">
+                        <h1 className="text-3xl font-bold text-gray-800">編輯商品</h1>
+                        <span className="text-gray-400 text-sm mb-1">ID: #{productId}</span>
+                    </div>
+                    <Button type="button" variant="outline" onClick={() => void handleDuplicateProduct()} disabled={duplicatingProduct}>
+                        {duplicatingProduct ? <Loader2 className="animate-spin" /> : <Copy />}
+                        {duplicatingProduct ? '正在複製...' : '複製商品'}
+                    </Button>
                 </div>
             </div>
 
@@ -384,9 +416,12 @@ export default function EditProductPage() {
                         activeTab === 'recipe' ? "opacity-100 translate-y-0" : "hidden opacity-0 translate-y-4"
                     )}>
                         <div className="p-8">
-                            <div className="flex items-center justify-between mb-6">
+                            <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
                                 <h3 className="text-lg font-bold text-gray-800">配方組成</h3>
-                                <p className="text-xs text-gray-400 font-medium italic">系統將根據配方自動演算成本與毛利</p>
+                                <div className="flex items-center gap-3">
+                                    <p className="text-xs text-gray-400 font-medium italic">系統將根據配方自動演算成本與毛利</p>
+                                    <CopyRecipeDialog materials={productMaterials} currentProductId={productId} storeId={selectedStoreId!} />
+                                </div>
                             </div>
 
                             <div className="bg-gray-50 rounded-xl border border-gray-100 overflow-hidden mb-8">
@@ -492,7 +527,13 @@ export default function EditProductPage() {
                         activeTab === 'attributes' ? "block" : "hidden"
                     )}>
                         <div className="p-8">
-                            <AttributeManager attributes={productAttributes} onChange={setProductAttributes} materials={materials} />
+                            <AttributeManager
+                                attributes={productAttributes}
+                                onChange={setProductAttributes}
+                                materials={materials}
+                                currentProductId={productId}
+                                storeId={selectedStoreId!}
+                            />
                         </div>
                     </div>
                 </div>

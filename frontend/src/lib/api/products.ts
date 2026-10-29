@@ -44,6 +44,7 @@ export interface ProductAttribute {
 export interface Product {
     id: number;
     store_id: number;
+    display_order: number;
     name: string;
     price: number;
     cost?: number; // 注意: 這個cost欄位通常是手動輸入的,我們可以用它來存儲自動計算的成本,或者作為覆蓋值
@@ -98,19 +99,25 @@ export const productApi = {
 
     // 建立商品
     createProduct: async (storeId: number, data: ProductCreate): Promise<Product> => {
-        const response = await apiClient.post(`/products/?store_id=${storeId}`, data);
-        return response.data;
+        const response = await apiClient.post<ResponseBase<Product>>(`/products/?store_id=${storeId}`, data);
+        return response.data.data;
     },
 
     // 更新商品
     updateProduct: async (productId: number, storeId: number, data: ProductUpdate): Promise<Product> => {
-        const response = await apiClient.patch(`/products/${productId}?store_id=${storeId}`, data);
-        return response.data;
+        const response = await apiClient.patch<ResponseBase<Product>>(`/products/${productId}?store_id=${storeId}`, data);
+        return response.data.data;
     },
 
     // 刪除商品
     deleteProduct: async (productId: number, store_id: number): Promise<void> => {
         await apiClient.delete(`/products/${productId}?store_id=${store_id}`);
+    },
+
+    reorderProducts: async (storeId: number, productIds: number[]): Promise<void> => {
+        await apiClient.put(`/products/reorder?store_id=${storeId}`, {
+            product_ids: productIds,
+        });
     },
 
     // 上傳圖片

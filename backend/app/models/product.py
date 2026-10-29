@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional, Any
-from sqlalchemy import BigInteger, Text, Numeric, Boolean, DateTime, func, ForeignKey, Index, Identity
+from sqlalchemy import BigInteger, Text, Numeric, Boolean, DateTime, Integer, func, ForeignKey, Index, Identity
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import JSONB
 from app.models.base import Base
@@ -17,6 +17,7 @@ class Product(Base):
     attributes: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
     image_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+    display_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
@@ -27,4 +28,5 @@ class Product(Base):
 
     __table_args__ = (
         Index("idx_products_store_category", "store_id", "category"),
+        Index("idx_products_store_display_order", "store_id", "display_order"),
     )

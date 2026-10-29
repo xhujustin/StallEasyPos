@@ -1,11 +1,14 @@
-import { useState } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
+import { useEffect, useState } from 'react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '../ui/textarea';
 import { shiftApi } from '@/lib/api/shifts';
-import { Loader2, PlusCircle, MinusCircle } from 'lucide-react';
+import { Loader2, PlusCircle, MinusCircle, Plus, X } from 'lucide-react';
+import axios from 'axios';
+
+const DEFAULT_REASON_PRESETS = ['電費', '瓦斯', '晚餐'];
+const CUSTOM_REASON_STORAGE_KEY = 'stalleasy-cash-reason-presets';
 
 interface CashManagementDialogProps {
     open: boolean;
@@ -19,6 +22,42 @@ export function CashManagementDialog({ open, onClose, shiftId, onSuccess }: Cash
     const [reason, setReason] = useState('');
     const [type, setType] = useState<'in' | 'out'>('in');
     const [loading, setLoading] = useState(false);
+    const [customReasonPresets, setCustomReasonPresets] = useState<string[]>([]);
+
+    useEffect(() => {
+        try {
+            const saved = JSON.parse(localStorage.getItem(CUSTOM_REASON_STORAGE_KEY) || '[]');
+            if (Array.isArray(saved)) {
+                setCustomReasonPresets(saved.filter((item): item is string => typeof item === 'string' && item.trim().length > 0));
+            }
+        } catch {
+            setCustomReasonPresets([]);
+        }
+    }, []);
+
+    const saveCustomReasonPresets = (presets: string[]) => {
+        setCustomReasonPresets(presets);
+        localStorage.setItem(CUSTOM_REASON_STORAGE_KEY, JSON.stringify(presets));
+    };
+
+    const addCustomReasonPreset = () => {
+        const value = window.prompt('輸入常用備註名稱');
+        const preset = value?.trim();
+        if (!preset) return;
+
+        const allPresets = [...DEFAULT_REASON_PRESETS, ...customReasonPresets];
+        if (allPresets.some((item) => item.toLocaleLowerCase() === preset.toLocaleLowerCase())) {
+            setReason(preset);
+            return;
+        }
+
+        saveCustomReasonPresets([...customReasonPresets, preset]);
+        setReason(preset);
+    };
+
+    const removeCustomReasonPreset = (preset: string) => {
+        saveCustomReasonPresets(customReasonPresets.filter((item) => item !== preset));
+    };
 
     const handleNumberClick = (num: string) => {
         setAmount((prev) => prev + num);
@@ -30,11 +69,6 @@ export function CashManagementDialog({ open, onClose, shiftId, onSuccess }: Cash
 
     const handleClear = () => {
         setAmount('');
-    };
-
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        submitTransaction();
     };
 
     const submitTransaction = async () => {
@@ -55,9 +89,11 @@ export function CashManagementDialog({ open, onClose, shiftId, onSuccess }: Cash
             });
             onSuccess();
             handleClose();
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error(error);
-            const msg = error.response?.data?.detail || '操作失敗';
+            const msg = axios.isAxiosError<{ detail?: string }>(error)
+                ? error.response?.data?.detail || '操作失敗'
+                : '操作失敗';
             alert(`操作失敗: ${msg}`);
         } finally {
             setLoading(false);
@@ -73,14 +109,14 @@ export function CashManagementDialog({ open, onClose, shiftId, onSuccess }: Cash
 
     return (
         <Dialog open={open} onOpenChange={handleClose}>
-            <DialogContent className="sm:max-w-[700px] p-0 overflow-hidden flex h-[500px] [&_button[class*='absolute']]:hidden">
+            <DialogContent className="sm:max-w-[700px] p-0 overflow-hidden flex h-[620px] max-h-[90vh] [&_button[class*='absolute']]:hidden">
                 <DialogHeader className="sr-only">
                     <DialogTitle>錢箱管理</DialogTitle>
                     <DialogDescription>錢箱進出管理</DialogDescription>
                 </DialogHeader>
 
                 {/* Left: Inputs & Display */}
-                <div className="w-1/2 bg-slate-50 p-6 border-r border-slate-200 flex flex-col">
+                <div className="w-1/2 bg-slate-50 p-6 border-r border-slate-200 flex flex-col overflow-y-auto">
                     <div className="flex gap-2 mb-6 p-1 bg-white rounded-lg border border-slate-200">
                         <Button
                             type="button"
@@ -102,7 +138,7 @@ export function CashManagementDialog({ open, onClose, shiftId, onSuccess }: Cash
                         </Button>
                     </div>
 
-                    <div className="space-y-4 flex-1">
+                    <div className="space-y-4">
                         <div className="space-y-2">
                             <Label htmlFor="amount_display">金額</Label>
                             <div className={`h-16 flex items-center px-4 rounded-md border-2 text-3xl font-bold font-mono bg-white ${type === 'in' ? 'border-green-500 text-green-600' : 'border-red-500 text-red-600'}`}>
@@ -111,15 +147,54 @@ export function CashManagementDialog({ open, onClose, shiftId, onSuccess }: Cash
                             </div>
                         </div>
 
-                        <div className="space-y-2 flex-1 flex flex-col">
+                        <div className="space-y-2">
                             <Label htmlFor="reason">備註</Label>
                             <Textarea
                                 id="reason"
                                 placeholder="輸入原因..."
                                 value={reason}
                                 onChange={(e) => setReason(e.target.value)}
-                                className="resize-none flex-1 bg-white"
+                                className="resize-none h-24 bg-white"
                             />
+                            <div className="space-y-2">
+                                <span className="text-xs font-medium text-slate-500">快速選擇</span>
+                                <div className="flex flex-wrap gap-2">
+                                    {[...DEFAULT_REASON_PRESETS, ...customReasonPresets].map((preset) => {
+                                        const isCustom = customReasonPresets.includes(preset);
+                                        return (
+                                            <span key={preset} className="inline-flex items-center">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setReason(preset)}
+                                                    className={`rounded-l-full border px-3 py-1.5 text-xs font-bold transition-colors ${reason === preset
+                                                        ? 'border-amber-400 bg-amber-100 text-amber-800'
+                                                        : 'border-slate-200 bg-white text-slate-600 hover:border-amber-300 hover:bg-amber-50'
+                                                    } ${!isCustom ? 'rounded-r-full' : ''}`}
+                                                >
+                                                    {preset}
+                                                </button>
+                                                {isCustom && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => removeCustomReasonPreset(preset)}
+                                                        className="rounded-r-full border border-l-0 border-slate-200 bg-white px-1.5 py-1.5 text-slate-400 hover:bg-red-50 hover:text-red-500"
+                                                        title={`移除「${preset}」`}
+                                                    >
+                                                        <X size={14} />
+                                                    </button>
+                                                )}
+                                            </span>
+                                        );
+                                    })}
+                                    <button
+                                        type="button"
+                                        onClick={addCustomReasonPreset}
+                                        className="inline-flex items-center gap-1 rounded-full border border-dashed border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-500 hover:border-amber-400 hover:bg-amber-50 hover:text-amber-700"
+                                    >
+                                        <Plus size={14} />自己設定
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>

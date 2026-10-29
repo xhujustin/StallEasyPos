@@ -140,7 +140,7 @@ export default function POSPage() {
             }
             pickupAt = parsed.toISOString();
         }
-        holdCart(pickupAt);
+        holdCart(pickupAt, currentShiftId || undefined);
         setHoldMode('normal');
         setPickupTime('');
         setShowHeldOrders(false);
@@ -149,7 +149,7 @@ export default function POSPage() {
 
     const handleRestoreHeldOrder = (heldOrderId: string) => {
         if (items.length > 0 && !window.confirm('目前購物車有商品，取回掛單將取代目前內容，確定繼續嗎？')) return;
-        restoreHeldOrder(heldOrderId);
+        restoreHeldOrder(heldOrderId, currentShiftId || undefined);
         setShowHeldOrders(false);
         toast.success('掛單已取回');
     };
@@ -272,12 +272,12 @@ export default function POSPage() {
     }, [storeId, configuredScheduledPrintActions, deviceSettings.scheduled_order_dispatch_lead_minutes]);
 
     useEffect(() => {
-        if (!storeId || currentOrderNo !== null) return;
+        if (!storeId || !currentShiftId || currentOrderNo !== null) return;
         let cancelled = false;
         const loadNextOrderNumber = async () => {
             try {
                 const nextNumber = await orderApi.getNextNumber(storeId);
-                if (!cancelled) initializeOrderNumbers(storeId, nextNumber);
+                if (!cancelled) initializeOrderNumbers(storeId, nextNumber, currentShiftId);
             } catch (error) {
                 console.error('Failed to get next order number:', error);
                 if (!cancelled) toast.error('目前單號取得失敗，結帳時將由系統自動編號');
@@ -285,7 +285,7 @@ export default function POSPage() {
         };
         loadNextOrderNumber();
         return () => { cancelled = true; };
-    }, [storeId, currentOrderNo, heldOrders, initializeOrderNumbers]);
+    }, [storeId, currentShiftId, currentOrderNo, heldOrders, initializeOrderNumbers]);
 
     const handleProductClick = (product: Product) => {
         setEditingCartItem(null);

@@ -14,10 +14,17 @@ async def get_dashboard_stats(
     store_id: Annotated[int, Query(...)],
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user_id: Annotated[int, Depends(get_current_user_id)],
-    trend_days: Annotated[int, Query()] = 7,
+    trend_days: Annotated[int, Query(ge=1, le=365)] = 7,
+    top_product_days: Annotated[int, Query(ge=1, le=365)] = 30,
 ):
     """
     取得儀表板統計數據 (營收、訂單數、熱銷商品)
     """
-    stats = await DashboardService.get_stats(db, store_id, current_user_id, trend_days)
+    stats = await DashboardService.get_stats(
+        db,
+        store_id,
+        current_user_id,
+        trend_days,
+        top_product_days,
+    )
     return ResponseBase(data=stats)

@@ -1,13 +1,37 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { ReactNode, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { productApi, Product } from '@/lib/api/products';
 import { categoryApi, Category } from '@/lib/api/categories';
-import { Search, Filter, Plus, Edit, Trash2, Power, PowerOff, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, Filter, Plus, Edit, Trash2, Power, ChevronLeft, ChevronRight, GripVertical, Loader2, ArrowUpDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { DndContext, DragEndEvent, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors } from '@dnd-kit/core';
+import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+
+function SortableProductRow({ productId, disabled, children }: {
+    productId: number;
+    disabled: boolean;
+    children: (handle: { attributes: object; listeners: object | undefined }) => ReactNode;
+}) {
+    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+        id: productId,
+        disabled,
+    });
+
+    return (
+        <tr
+            ref={setNodeRef}
+            style={{ transform: CSS.Transform.toString(transform), transition }}
+            className={cn('hover:bg-gray-50/80 transition-colors', isDragging && 'relative z-10 bg-blue-50 opacity-80 shadow-lg')}
+        >
+            {children({ attributes, listeners })}
+        </tr>
+    );
+}
 
 export default function ProductsPage() {
     const router = useRouter();
@@ -20,7 +44,14 @@ export default function ProductsPage() {
     const [selectedCategory, setSelectedCategory] = useState<string>('all');
     const [statusFilter, setStatusFilter] = useState<string>('all');
     const [currentPage, setCurrentPage] = useState(1);
+    const [savingOrder, setSavingOrder] = useState(false);
+    const [autoSortBy, setAutoSortBy] = useState<'manual' | 'name_length' | 'name_stroke' | 'category' | 'price'>('manual');
+    const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
     const ITEMS_PER_PAGE = 20;
+    const sensors = useSensors(
+        useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+        useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+    );
 
     useEffect(() => {
         setMounted(true);
@@ -77,8 +108,6 @@ export default function ProductsPage() {
         currentPage * ITEMS_PER_PAGE
     );
 
-    const currentStore = user?.stores?.find((s) => s.id === selectedStoreId);
-
     if (!mounted || loading) {
         return (
             <div className="flex items-center justify-center min-h-screen">
@@ -101,6 +130,73 @@ export default function ProductsPage() {
         } catch (error) {
             console.error('刪除商品失敗:', error);
             alert('刪除商品失敗,請稍後再試');
+        }
+    };
+
+    const handleDragEnd = async ({ active, over }: DragEndEvent) => {
+        if (!over || active.id === over.id || !selectedStoreId || savingOrder) return;
+
+        const oldIndex = products.findIndex((product) => product.id === Number(active.id));
+        const newIndex = products.findIndex((product) => product.id === Number(over.id));
+        if (oldIndex < 0 || newIndex < 0) return;
+
+        const previousProducts = products;
+        const reorderedProducts = arrayMove(products, oldIndex, newIndex).map((product, index) => ({
+            ...product,
+            display_order: index + 1,
+        }));
+        setAutoSortBy('manual');
+        setProducts(reorderedProducts);
+        setSavingOrder(true);
+
+        try {
+            await productApi.reorderProducts(selectedStoreId, reorderedProducts.map((product) => product.id));
+        } catch (error) {
+            console.error('儲存商品排序失敗:', error);
+            setProducts(previousProducts);
+            alert('儲存商品排序失敗，已恢復原本順序');
+        } finally {
+            setSavingOrder(false);
+        }
+    };
+
+    const handleAutoSort = async () => {
+        if (!selectedStoreId || savingOrder || products.length < 2 || autoSortBy === 'manual') return;
+
+        const previousProducts = products;
+        const strokeCollator = new Intl.Collator('zh-Hant-u-co-stroke', {
+            numeric: true,
+            sensitivity: 'base',
+        });
+        const direction = sortDirection === 'asc' ? 1 : -1;
+        const sortedProducts = [...products].sort((a, b) => {
+            let comparison = 0;
+            if (autoSortBy === 'name_length') {
+                comparison = Array.from(a.name).length - Array.from(b.name).length;
+            } else if (autoSortBy === 'name_stroke') {
+                comparison = strokeCollator.compare(a.name, b.name);
+            } else if (autoSortBy === 'category') {
+                comparison = strokeCollator.compare(a.category || '未分類', b.category || '未分類');
+            } else {
+                comparison = Number(a.price) - Number(b.price);
+            }
+
+            if (comparison === 0) comparison = strokeCollator.compare(a.name, b.name);
+            if (comparison === 0) comparison = a.id - b.id;
+            return comparison * direction;
+        }).map((product, index) => ({ ...product, display_order: index + 1 }));
+
+        setProducts(sortedProducts);
+        setCurrentPage(1);
+        setSavingOrder(true);
+        try {
+            await productApi.reorderProducts(selectedStoreId, sortedProducts.map((product) => product.id));
+        } catch (error) {
+            console.error('自動排序儲存失敗:', error);
+            setProducts(previousProducts);
+            alert('自動排序儲存失敗，已恢復原本順序');
+        } finally {
+            setSavingOrder(false);
         }
     };
 
@@ -203,10 +299,50 @@ export default function ProductsPage() {
 
             {/* Products Table */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                <div className="flex flex-col gap-3 border-b border-gray-100 bg-blue-50/50 px-6 py-3 lg:flex-row lg:items-center lg:justify-between">
+                    <span className="text-xs text-gray-500">按住商品左側把手拖曳，即可調整商品顯示順序</span>
+                    <div className="flex flex-wrap items-center gap-2">
+                        <label className="text-xs font-medium text-gray-500" htmlFor="product-auto-sort">自動排序</label>
+                        <select
+                            id="product-auto-sort"
+                            value={autoSortBy}
+                            onChange={(event) => setAutoSortBy(event.target.value as typeof autoSortBy)}
+                            disabled={savingOrder}
+                            className="h-8 rounded-lg border border-gray-200 bg-white px-2 text-xs text-gray-700 outline-none focus:border-blue-400"
+                        >
+                            <option value="manual">手動排序</option>
+                            <option value="name_length">商品名稱長度</option>
+                            <option value="name_stroke">商品名稱筆劃</option>
+                            <option value="category">商品分類</option>
+                            <option value="price">售價</option>
+                        </select>
+                        <select
+                            value={sortDirection}
+                            onChange={(event) => setSortDirection(event.target.value as typeof sortDirection)}
+                            disabled={savingOrder}
+                            aria-label="排序方向"
+                            className="h-8 rounded-lg border border-gray-200 bg-white px-2 text-xs text-gray-700 outline-none focus:border-blue-400"
+                        >
+                            <option value="asc">由小到大</option>
+                            <option value="desc">由大到小</option>
+                        </select>
+                        <Button
+                            type="button"
+                            size="sm"
+                            onClick={() => void handleAutoSort()}
+                            disabled={savingOrder || products.length < 2 || autoSortBy === 'manual'}
+                            className="h-8 bg-blue-600 text-white hover:bg-blue-700"
+                        >
+                            {savingOrder ? <Loader2 className="animate-spin" /> : <ArrowUpDown />}
+                            {savingOrder ? '儲存中...' : '套用排序'}
+                        </Button>
+                    </div>
+                </div>
                 <div className="overflow-x-auto">
                     <table className="w-full text-left">
                         <thead>
                             <tr className="bg-gray-50 border-b border-gray-200 text-gray-500 text-xs uppercase tracking-wider">
+                                <th className="w-12 px-3 py-4 font-semibold text-center">排序</th>
                                 <th className="px-6 py-4 font-semibold">商品名稱</th>
                                 <th className="px-6 py-4 font-semibold">分類</th>
                                 <th className="px-6 py-4 font-semibold text-right">售價</th>
@@ -216,10 +352,12 @@ export default function ProductsPage() {
                                 <th className="px-6 py-4 font-semibold text-right">操作</th>
                             </tr>
                         </thead>
+                        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(event) => void handleDragEnd(event)}>
+                            <SortableContext items={paginatedProducts.map((product) => product.id)} strategy={verticalListSortingStrategy}>
                         <tbody className="divide-y divide-gray-100">
                             {paginatedProducts.length === 0 ? (
                                 <tr>
-                                    <td colSpan={7} className="px-6 py-12 text-center text-gray-400 italic">
+                                    <td colSpan={8} className="px-6 py-12 text-center text-gray-400 italic">
                                         {searchQuery || selectedCategory !== 'all' || statusFilter !== 'all'
                                             ? '找不到符合條件的商品'
                                             : '尚未建立任何商品'}
@@ -229,7 +367,20 @@ export default function ProductsPage() {
                                 paginatedProducts.map((product) => {
                                     const { cost, margin } = calculateMetrics(product);
                                     return (
-                                        <tr key={product.id} className="hover:bg-gray-50/80 transition-colors">
+                                        <SortableProductRow key={product.id} productId={product.id} disabled={savingOrder}>
+                                            {({ attributes, listeners }) => (<>
+                                            <td className="px-3 py-4 text-center">
+                                                <button
+                                                    type="button"
+                                                    {...attributes}
+                                                    {...listeners}
+                                                    disabled={savingOrder}
+                                                    className="inline-flex cursor-grab touch-none items-center justify-center rounded p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-700 active:cursor-grabbing disabled:cursor-not-allowed"
+                                                    title="拖曳調整商品順序"
+                                                >
+                                                    <GripVertical size={18} />
+                                                </button>
+                                            </td>
                                             <td className="px-6 py-4 capitalize">
                                                 <div className="text-sm font-bold text-gray-900">{product.name}</div>
                                                 <div className="text-[10px] text-gray-400 font-mono mt-0.5">ID: #{product.id}</div>
@@ -286,11 +437,14 @@ export default function ProductsPage() {
                                                     </button>
                                                 </div>
                                             </td>
-                                        </tr>
+                                            </>)}
+                                        </SortableProductRow>
                                     )
                                 })
                             )}
                         </tbody>
+                            </SortableContext>
+                        </DndContext>
                     </table>
                 </div>
 
