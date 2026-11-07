@@ -1,17 +1,36 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, type ReactNode } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { productApi, ProductUpdate, Product, ProductMaterial, ProductMaterialCreate, ProductAttribute } from '@/lib/api/products';
 import { categoryApi, Category } from '@/lib/api/categories';
-import { materialApi, Material } from '@/lib/api/materials';
-import { ArrowLeft, Plus, Trash2, Calculator, Settings, Info, Upload, Copy, Loader2 } from 'lucide-react';
+import { materialApi, Material, MaterialGroup } from '@/lib/api/materials';
+import { ArrowLeft, Plus, Trash2, Calculator, Settings, Info, Upload, Copy, Loader2, GripVertical } from 'lucide-react';
 import AttributeManager from '@/components/admin/products/AttributeManager';
 import CopyRecipeDialog, { createRecipePayload } from '@/components/admin/products/CopyRecipeDialog';
 import { createAttributesPayload } from '@/components/admin/products/CopyAttributesDialog';
 import { Button } from '@/components/ui/button';
 import { cn, getFullImageUrl } from '@/lib/utils';
+import { DndContext, type DragEndEvent, PointerSensor, closestCenter, useSensor, useSensors } from '@dnd-kit/core';
+import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+
+function SortableRecipeRow({ id, children }: {
+    id: number;
+    children: (handle: { attributes: object; listeners: object | undefined }) => ReactNode;
+}) {
+    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+    return (
+        <tr
+            ref={setNodeRef}
+            style={{ transform: CSS.Transform.toString(transform), transition }}
+            className={cn('hover:bg-white transition-colors', isDragging && 'relative z-10 bg-amber-50 opacity-80 shadow-lg')}
+        >
+            {children({ attributes, listeners })}
+        </tr>
+    );
+}
 
 export default function EditProductPage() {
     const router = useRouter();
@@ -21,6 +40,7 @@ export default function EditProductPage() {
     const [mounted, setMounted] = useState(false);
     const [categories, setCategories] = useState<Category[]>([]);
     const [materials, setMaterials] = useState<Material[]>([]);
+    const [materialGroups, setMaterialGroups] = useState<MaterialGroup[]>([]);
     const [loading, setLoading] = useState(false);
     const [loadingProduct, setLoadingProduct] = useState(true);
     const [duplicatingProduct, setDuplicatingProduct] = useState(false);
@@ -29,6 +49,7 @@ export default function EditProductPage() {
     const [productMaterials, setProductMaterials] = useState<ProductMaterial[]>([]);
     const [newMaterialId, setNewMaterialId] = useState<number | ''>('');
     const [newQuantity, setNewQuantity] = useState<string>('');
+    const recipeSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
     // 屬性相關 State
     const [productAttributes, setProductAttributes] = useState<ProductAttribute[]>([]);
@@ -40,6 +61,7 @@ export default function EditProductPage() {
         category: '',
         description: '',
         is_active: true,
+        skip_printing: false,
         image_url: '',
     });
 
@@ -62,14 +84,16 @@ export default function EditProductPage() {
         if (!selectedStoreId) return;
         try {
             setLoadingProduct(true);
-            const [categoriesData, materialsData, productData] = await Promise.all([
+            const [categoriesData, materialsData, materialGroupsData, productData] = await Promise.all([
                 categoryApi.getCategories(selectedStoreId),
                 materialApi.getMaterials(selectedStoreId),
+                materialApi.getGroups(selectedStoreId),
                 productApi.getById(productId, selectedStoreId)
             ]);
 
             setCategories(categoriesData);
             setMaterials(materialsData);
+            setMaterialGroups(materialGroupsData);
 
             setFormData({
                 name: productData.name,
@@ -77,6 +101,7 @@ export default function EditProductPage() {
                 category: productData.category || '',
                 description: productData.description || '',
                 is_active: productData.is_active,
+                skip_printing: productData.skip_printing,
                 image_url: productData.image_url || '',
             });
 
@@ -111,6 +136,25 @@ export default function EditProductPage() {
         return { totalCost, profit, profitMargin };
     }, [productMaterials, materials, formData.price]);
 
+    const recipeMaterialSections = useMemo(() => {
+        const groupNames = [...materialGroups.map(group => group.name), '未分類'];
+        const materialTypes: Array<{ type: Material['material_type']; label: string }> = [
+            { type: 'raw', label: '庫存管理' },
+            { type: 'composite', label: '耗材組合' },
+        ];
+
+        return materialTypes.map(section => ({
+            ...section,
+            groups: groupNames.map(groupName => ({
+                name: groupName,
+                materials: materials.filter(material =>
+                    material.material_type === section.type &&
+                    (material.group_name || '未分類') === groupName
+                ),
+            })).filter(group => group.materials.length > 0),
+        })).filter(section => section.groups.length > 0);
+    }, [materials, materialGroups]);
+
     const handleAddMaterial = () => {
         const qty = parseFloat(newQuantity);
         if (!newMaterialId || isNaN(qty) || qty <= 0) return;
@@ -128,6 +172,7 @@ export default function EditProductPage() {
             id: Date.now(), // 臨時ID
             material_id: Number(newMaterialId),
             quantity: parseFloat(newQuantity),
+            display_order: productMaterials.length + 1,
             material: material
         };
 
@@ -137,7 +182,20 @@ export default function EditProductPage() {
     };
 
     const handleRemoveMaterial = (materialId: number) => {
-        setProductMaterials(productMaterials.filter(pm => pm.material_id !== materialId));
+        setProductMaterials(productMaterials
+            .filter(pm => pm.material_id !== materialId)
+            .map((material, index) => ({ ...material, display_order: index + 1 })));
+    };
+
+    const handleRecipeDragEnd = ({ active, over }: DragEndEvent) => {
+        if (!over || active.id === over.id) return;
+        const oldIndex = productMaterials.findIndex(material => material.material_id === Number(active.id));
+        const newIndex = productMaterials.findIndex(material => material.material_id === Number(over.id));
+        if (oldIndex < 0 || newIndex < 0) return;
+        setProductMaterials(arrayMove(productMaterials, oldIndex, newIndex).map((material, index) => ({
+            ...material,
+            display_order: index + 1,
+        })));
     };
 
     const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -181,9 +239,10 @@ export default function EditProductPage() {
             setLoading(true);
 
             // 準備配方資料
-            const materialsPayload: ProductMaterialCreate[] = productMaterials.map(pm => ({
+            const materialsPayload: ProductMaterialCreate[] = productMaterials.map((pm, index) => ({
                 material_id: pm.material_id,
-                quantity: pm.quantity
+                quantity: pm.quantity,
+                display_order: index + 1,
             }));
 
             const payload: ProductUpdate = {
@@ -252,7 +311,6 @@ export default function EditProductPage() {
                 <div className="flex flex-wrap items-end justify-between gap-4">
                     <div className="flex items-end gap-3">
                         <h1 className="text-3xl font-bold text-gray-800">編輯商品</h1>
-                        <span className="text-gray-400 text-sm mb-1">ID: #{productId}</span>
                     </div>
                     <Button type="button" variant="outline" onClick={() => void handleDuplicateProduct()} disabled={duplicatingProduct}>
                         {duplicatingProduct ? <Loader2 className="animate-spin" /> : <Copy />}
@@ -350,6 +408,21 @@ export default function EditProductPage() {
                                         </label>
                                     </div>
                                 </div>
+                                <div className="space-y-2 md:col-span-2">
+                                    <label className="text-sm font-bold text-gray-700 ml-1">列印設定</label>
+                                    <label className="flex cursor-pointer items-center justify-between gap-4 rounded-xl border border-gray-100 bg-gray-50 p-3">
+                                        <div>
+                                            <div className="text-sm font-medium text-gray-700">下單時不自動列印單據</div>
+                                            <p className="mt-0.5 text-xs text-gray-400">自動出單不顯示此商品；本班帳單仍可手動補印完整內容。</p>
+                                        </div>
+                                        <input
+                                            type="checkbox"
+                                            checked={formData.skip_printing ?? false}
+                                            onChange={(e) => setFormData({ ...formData, skip_printing: e.target.checked })}
+                                            className="h-5 w-5 shrink-0 rounded border-gray-300 text-[#D4AF37] focus:ring-[#D4AF37]"
+                                        />
+                                    </label>
+                                </div>
                             </div>
 
                             <div className="space-y-2">
@@ -428,6 +501,7 @@ export default function EditProductPage() {
                                 <table className="w-full text-left">
                                     <thead>
                                         <tr className="bg-gray-100/50 text-[11px] uppercase tracking-wider text-gray-500 font-bold border-b border-gray-200">
+                                            <th className="w-12 px-3 py-3 text-center">排序</th>
                                             <th className="px-6 py-3">耗材項目</th>
                                             <th className="px-6 py-3 text-right">消耗量</th>
                                             <th className="px-6 py-3 text-right">單位成本</th>
@@ -435,18 +509,35 @@ export default function EditProductPage() {
                                             <th className="px-6 py-3 text-center">操作</th>
                                         </tr>
                                     </thead>
+                                    <DndContext sensors={recipeSensors} collisionDetection={closestCenter} onDragEnd={handleRecipeDragEnd}>
+                                        <SortableContext items={productMaterials.map(material => material.material_id)} strategy={verticalListSortingStrategy}>
                                     <tbody className="divide-y divide-gray-200/50">
                                         {productMaterials.length === 0 ? (
                                             <tr>
-                                                <td colSpan={5} className="px-6 py-12 text-center text-gray-400 italic">尚未設定配方內容</td>
+                                                <td colSpan={6} className="px-6 py-12 text-center text-gray-400 italic">尚未設定配方內容</td>
                                             </tr>
                                         ) : (
                                             productMaterials.map((pm) => {
                                                 const material = materials.find(m => m.id === pm.material_id) || pm.material;
                                                 const subtotal = (material?.unit_cost || 0) * pm.quantity;
                                                 return (
-                                                    <tr key={pm.material_id} className="hover:bg-white transition-colors">
-                                                        <td className="px-6 py-4 font-bold text-gray-800">{material?.name || '未知耗材'}</td>
+                                                    <SortableRecipeRow key={pm.material_id} id={pm.material_id}>
+                                                        {({ attributes, listeners }) => (<>
+                                                        <td className="px-3 py-4 text-center">
+                                                            <button
+                                                                type="button"
+                                                                {...attributes}
+                                                                {...listeners}
+                                                                className="inline-flex cursor-grab touch-none items-center justify-center rounded p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-700 active:cursor-grabbing"
+                                                                title="拖曳調整配方順序"
+                                                            >
+                                                                <GripVertical size={18} />
+                                                            </button>
+                                                        </td>
+                                                        <td className="px-6 py-4">
+                                                            <div className="font-bold text-gray-800">{material?.name || '未知耗材'}</div>
+                                                            <div className="mt-1 text-[11px] text-gray-400">{material?.group_name || '未分類'}</div>
+                                                        </td>
                                                         <td className="px-6 py-4 text-right">
                                                             <span className="font-mono text-gray-900">{parseFloat(Number(pm.quantity).toFixed(4))}</span>
                                                             <span className="text-[10px] text-gray-400 ml-1">{material?.unit}</span>
@@ -462,11 +553,14 @@ export default function EditProductPage() {
                                                                 <Trash2 size={16} />
                                                             </button>
                                                         </td>
-                                                    </tr>
+                                                        </>)}
+                                                    </SortableRecipeRow>
                                                 );
                                             })
                                         )}
                                     </tbody>
+                                        </SortableContext>
+                                    </DndContext>
                                 </table>
                             </div>
 
@@ -484,9 +578,20 @@ export default function EditProductPage() {
                                             className="w-full px-4 py-2 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#D4AF37]/20 focus:border-[#D4AF37] outline-none text-sm appearance-none cursor-pointer"
                                         >
                                             <option value="">請選擇耗材項目...</option>
-                                            {materials.map(m => (
-                                                <option key={m.id} value={m.id}>{m.name} (${m.unit_cost}/{m.unit})</option>
-                                            ))}
+                                            {recipeMaterialSections.flatMap(section => [
+                                                <option key={`${section.type}-heading`} disabled value={`${section.type}-heading`}>
+                                                    ── {section.label} ──
+                                                </option>,
+                                                ...section.groups.map(group => (
+                                                    <optgroup key={`${section.type}-${group.name}`} label={`${section.label}｜${group.name}`}>
+                                                        {group.materials.map(material => (
+                                                            <option key={material.id} value={material.id}>
+                                                                {material.name} (${material.unit_cost}/{material.unit})
+                                                            </option>
+                                                        ))}
+                                                    </optgroup>
+                                                )),
+                                            ])}
                                         </select>
                                     </div>
                                     <div className="md:col-span-4 space-y-1.5">
@@ -531,6 +636,7 @@ export default function EditProductPage() {
                                 attributes={productAttributes}
                                 onChange={setProductAttributes}
                                 materials={materials}
+                                materialGroups={materialGroups}
                                 currentProductId={productId}
                                 storeId={selectedStoreId!}
                             />

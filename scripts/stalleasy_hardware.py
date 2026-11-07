@@ -13,6 +13,7 @@ import fcntl
 import struct
 import base64
 import io
+import tempfile
 from PIL import Image, ImageDraw, ImageFont
 from pathlib import Path
 
@@ -30,6 +31,33 @@ FONT_PATHS = (
     "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
 )
 LATIN_FONT_PATH = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+
+
+def printer_dot_width(printer):
+    """Convert receipt or WxH label sizes to the printable width at 203 dpi."""
+    paper_width = str(printer.get("paper_width") or "57mm").lower()
+    if paper_width in {"57mm", "58mm"}:
+        return 384
+    if "x" in paper_width:
+        try:
+            width_mm = int(paper_width.split("x", 1)[0])
+            return min(576, max(160, width_mm * 8))
+        except ValueError:
+            pass
+    return 576
+
+
+def label_dimensions_mm(printer):
+    paper_size = str(printer.get("paper_width") or "").lower().removesuffix("mm")
+    if "x" not in paper_size:
+        return None
+    try:
+        width, height = (int(value) for value in paper_size.split("x", 1))
+    except ValueError:
+        return None
+    if not (20 <= width <= 80 and 20 <= height <= 80):
+        return None
+    return width, height
 
 
 def receipt_font(size):
@@ -247,6 +275,56 @@ def raster_command(image):
     )
 
 
+def tspl_bitmap_command(image, label_width_mm, label_height_mm):
+    """Build a complete TSPL raster label for Xprinter label mode."""
+    width_dots = label_width_mm * 8
+    height_dots = label_height_mm * 8
+    mono = image.convert("L")
+    if mono.width != width_dots:
+        mono = mono.resize((width_dots, max(1, round(mono.height * width_dots / mono.width))))
+    if mono.height > height_dots:
+        mono = mono.crop((0, 0, width_dots, height_dots))
+
+    page = Image.new("L", (width_dots, height_dots), 255)
+    page.paste(mono, (0, 0))
+    width_bytes = (width_dots + 7) // 8
+    pixels = page.load()
+    bitmap = bytearray()
+    for y in range(height_dots):
+        for byte_x in range(width_bytes):
+            value = 0
+            for bit in range(8):
+                x = byte_x * 8 + bit
+                if x < width_dots and pixels[x, y] < 160:
+                    value |= 1 << (7 - bit)
+            bitmap.append(value)
+
+    prefix = (
+        f"SIZE {label_width_mm} mm,{label_height_mm} mm\r\n"
+        "GAP 2 mm,0 mm\r\n"
+        "DIRECTION 1\r\n"
+        "CLS\r\n"
+        f"BITMAP 0,0,{width_bytes},{height_dots},0,"
+    ).encode("ascii")
+    return prefix + bytes(bitmap) + b"\r\nPRINT 1,1\r\n"
+
+
+def tspl_test_command(label_width_mm, label_height_mm):
+    """Small text-only diagnostic that verifies the printer's TSPL mode."""
+    right = max(80, label_width_mm * 8 - 20)
+    bottom = max(80, label_height_mm * 8 - 20)
+    return (
+        f"SIZE {label_width_mm} mm,{label_height_mm} mm\r\n"
+        "GAP 2 mm,0 mm\r\n"
+        "DIRECTION 1,0\r\n"
+        "REFERENCE 0,0\r\n"
+        "CLS\r\n"
+        "TEXT 20,20,\"3\",0,1,1,\"USB TSPL TEST\"\r\n"
+        f"BOX 10,10,{right},{bottom},2\r\n"
+        "PRINT 1,1\r\n"
+    ).encode("ascii")
+
+
 def compact_text_image(value, max_width, start_size):
     """Render one tightly-cropped CJK line, shrinking instead of wrapping."""
     value = str(value).strip()
@@ -413,6 +491,113 @@ def render_product_label(receipt, item, width, item_sequence, item_total):
     return cropped.point(lambda value: 0 if value < 210 else 255, mode="1").convert("L")
 
 
+def render_product_label_for_180(receipt, item, width, item_sequence, item_total):
+    """Draw blocks in reverse order so a later 180° page rotation reads top-down."""
+    margin = 10
+    small = receipt_font(21)
+    heading = receipt_font(35)
+    price_font = receipt_font(38)
+    canvas = Image.new("L", (width, 900), 255)
+    draw = ImageDraw.Draw(canvas)
+    y = 0
+
+    unit_price = item.get("unit_price")
+    if unit_price is None:
+        quantity = max(1, float(item.get("quantity", 1)))
+        unit_price = float(item.get("amount", 0)) / quantity
+    created_at = str(receipt.get("pickup_at") or receipt.get("created_at") or "")
+    price_text = money(unit_price)
+    time_width, time_height = text_dimensions(draw, created_at, small)
+    price_width, price_height = text_dimensions(draw, price_text, price_font)
+    # Pre-rotation right becomes final left, and pre-rotation left becomes right.
+    draw_mixed(draw, (max(margin, width - margin - time_width), y), created_at, small)
+    draw_mixed(draw, (margin, y), price_text, price_font)
+    y += max(price_height, time_height) + 16
+
+    option_parts = [str(option).strip() for option in item.get("options", []) if str(option).strip()]
+    if item.get("note"):
+        option_parts.append(str(item["note"]).strip())
+    if option_parts:
+        option_text = " ".join(option_parts)
+        option_font = receipt_font(21)
+        for size in (21, 19, 17, 15):
+            candidate = receipt_font(size)
+            if text_dimensions(draw, option_text, candidate)[0] <= width - margin * 2:
+                option_font = candidate
+                break
+        option_width, option_height = text_dimensions(draw, option_text, option_font)
+        draw_mixed(draw, (max(margin, width - margin - option_width), y), option_text, option_font)
+        y += option_height + 5
+
+    name = str(item.get("name", ""))
+    name_width, name_height = text_dimensions(draw, name, heading)
+    draw_mixed(draw, (max(margin, width - margin - name_width), y), name, heading)
+    y += name_height + 7
+
+    order_type_labels = {"dine_in": "內用", "take_out": "外帶", "delivery": "外送"}
+    order_type = order_type_labels.get(str(receipt.get("order_type") or "take_out"), "外帶")
+    header = f"{order_type} {receipt.get('order_no', '')}"
+    progress = f"{item_sequence}/{item_total}"
+    header_width, header_height = text_dimensions(draw, header, small)
+    progress_width, progress_height = text_dimensions(draw, progress, heading)
+    draw_mixed(draw, (max(margin, width - margin - header_width), y), header, small)
+    draw_mixed(draw, (margin, y), progress, heading)
+    y += max(header_height, progress_height) + 4
+
+    cropped = canvas.crop((0, 0, width, max(1, y)))
+    return cropped.point(lambda value: 0 if value < 210 else 255, mode="1").convert("L")
+
+
+def spread_label_rows(image, target_height):
+    """Lay out label bands while keeping the product and options together."""
+    mono = image.convert("L")
+    ink_rows = []
+    for y in range(mono.height):
+        row = mono.crop((0, y, mono.width, y + 1))
+        if row.getextrema()[0] < 210:
+            ink_rows.append(y)
+    if not ink_rows:
+        return Image.new("L", (mono.width, target_height), 255)
+
+    bands = []
+    start = previous = ink_rows[0]
+    for y in ink_rows[1:]:
+        # Small gaps are holes within one text line; larger gaps separate blocks.
+        if y - previous > 5:
+            bands.append((start, previous + 1))
+            start = y
+        previous = y
+    bands.append((start, previous + 1))
+
+    total_ink_height = sum(bottom - top for top, bottom in bands)
+    if total_ink_height >= target_height or len(bands) == 1:
+        result = mono.crop((0, bands[0][0], mono.width, bands[-1][1]))
+        result.thumbnail((mono.width, target_height), Image.Resampling.LANCZOS)
+        return result
+
+    result = Image.new("L", (mono.width, target_height), 255)
+    rendered = [mono.crop((0, top, mono.width, bottom)) for top, bottom in bands]
+
+    # Header stays at the top. Date/price is raised by roughly 1 mm instead of
+    # sitting on the stock edge. Everything between them is one compact group,
+    # so a product name and its customizations never get spread far apart.
+    bottom_inset = min(8, max(0, target_height - total_ink_height))
+    bottom_y = target_height - bottom_inset - rendered[-1].height
+    result.paste(rendered[0], (0, 0))
+    result.paste(rendered[-1], (0, bottom_y))
+
+    middle = rendered[1:-1]
+    if middle:
+        compact_gap = 4
+        middle_height = sum(band.height for band in middle) + compact_gap * (len(middle) - 1)
+        available_top = rendered[0].height
+        middle_y = max(available_top, round((available_top + bottom_y - middle_height) / 2))
+        for band in middle:
+            result.paste(band, (0, middle_y))
+            middle_y += band.height + compact_gap
+    return result
+
+
 def render_shift_report(report, width, logo_base64=None):
     margin = 8
     small = receipt_font(19)
@@ -500,7 +685,7 @@ def render_shift_report(report, width, logo_base64=None):
 def number_ticket_bytes(job):
     receipt = job.get("receipt") or {}
     printer = job["printer"]
-    dot_width = 384 if printer.get("paper_width") in {"57mm", "58mm"} else 576
+    dot_width = printer_dot_width(printer)
     out = bytearray(ESC + b"@" + ESC + b"2")
     out += GS + b"L\x00\x00" + GS + b"W" + bytes((dot_width & 0xFF, dot_width >> 8))
     out += raster_command(render_number_ticket(receipt, dot_width, job.get("logo_base64")))
@@ -511,21 +696,28 @@ def number_ticket_bytes(job):
 def kitchen_ticket_bytes(job):
     receipt = job.get("receipt") or {}
     printer = job["printer"]
-    dot_width = 384 if printer.get("paper_width") in {"57mm", "58mm"} else 576
+    dot_width = printer_dot_width(printer)
     out = bytearray(ESC + b"@" + ESC + b"2")
     out += raster_command(render_kitchen_ticket(receipt, dot_width))
     out += ESC + b"d\x05" + GS + b"V\x00"
     return bytes(out)
 
 
+def expanded_label_items(receipt):
+    """Expand quantities and number physical labels across the whole order."""
+    items = []
+    for item in receipt.get("lines", []):
+        quantity = max(1, int(float(item.get("quantity", 1))))
+        items.extend([item] * quantity)
+    total = len(items)
+    return [(item, index, total) for index, item in enumerate(items, start=1)]
+
+
 def label_bytes(job):
     receipt = job.get("receipt") or {}
     printer = job["printer"]
-    dot_width = 384 if printer.get("paper_width") in {"57mm", "58mm"} else 576
-    expanded = []
-    for item in receipt.get("lines", []):
-        item_total = max(1, int(float(item.get("quantity", 1))))
-        expanded.extend((item, item_sequence, item_total) for item_sequence in range(1, item_total + 1))
+    dot_width = printer_dot_width(printer)
+    expanded = expanded_label_items(receipt)
     out = bytearray()
     for item, item_sequence, item_total in expanded:
         out += ESC + b"@" + ESC + b"2"
@@ -538,6 +730,152 @@ def label_bytes(job):
         ))
         out += ESC + b"d\x03" + GS + b"V\x00"
     return bytes(out)
+
+
+def tspl_label_bytes(job):
+    receipt = job.get("receipt") or {}
+    printer = job["printer"]
+    dimensions = label_dimensions_mm(printer)
+    if dimensions is None:
+        raise RuntimeError("TSPL 標籤尺寸格式錯誤")
+    width_mm, height_mm = dimensions
+    dot_width = width_mm * 8
+    expanded = expanded_label_items(receipt)
+
+    out = bytearray()
+    for item, sequence, item_total in expanded:
+        image = render_product_label(receipt, item, dot_width, sequence, item_total)
+        out += tspl_bitmap_command(image, width_mm, height_mm)
+    return bytes(out)
+
+
+def cups_label_pages(job):
+    """Render one calibrated 203-dpi page per physical label for CUPS."""
+    receipt = job.get("receipt") or {}
+    printer = job["printer"]
+    dimensions = label_dimensions_mm(printer)
+    if dimensions is None:
+        raise RuntimeError("CUPS 標籤列印必須選擇寬 × 高的貼紙尺寸")
+    width_mm, height_mm = dimensions
+    width_dots = width_mm * 8
+    height_dots = height_mm * 8
+    offset_x = round(float(printer.get("label_offset_x_mm", 1.5)) * 8)
+    margin_dots = max(1, round(float(printer.get("label_margin_mm", 0.5)) * 8))
+    margin_y_dots = max(1, round(float(printer.get("label_margin_y_mm", 1)) * 8))
+    margin_top_dots = max(0, round(float(printer.get("label_margin_top_mm", 0)) * 8))
+    # The page is rotated before the physical horizontal calibration, so a
+    # positive final offset must be reserved on the pre-rotation left edge.
+    paste_x = margin_dots + max(0, offset_x)
+    content_width = max(1, width_dots - margin_dots * 2 - abs(offset_x))
+    content_height = max(1, height_dots - margin_top_dots - margin_y_dots)
+    rotation = int(printer.get("label_rotation", 180)) % 360
+
+    if job["action"] == "test_print":
+        page = Image.new("L", (width_dots, height_dots), 255)
+        draw = ImageDraw.Draw(page)
+        draw.rectangle((8, 8, width_dots - 9, height_dots - 9), outline=0, width=3)
+        fonts = receipt_font(25)
+        draw_mixed(draw, (22, 35), "StallEasy TEST", fonts)
+        pages = [page]
+    else:
+        pages = []
+        expanded = expanded_label_items(receipt)
+        for item, sequence, item_total in expanded:
+            content = render_product_label(receipt, item, content_width, sequence, item_total)
+            if content.width > content_width or content.height > content_height:
+                content.thumbnail((content_width, content_height), Image.Resampling.LANCZOS)
+            content = spread_label_rows(content, content_height)
+            page = Image.new("L", (width_dots, height_dots), 255)
+            # Cropping beyond a short rendered label pads with black in Pillow.
+            # Crop only the real content and leave the rest of the stock white.
+            paste_width = min(content_width, content.width)
+            paste_height = min(content_height, content.height)
+            page.paste(
+                content.crop((0, 0, paste_width, paste_height)),
+                (paste_x, height_dots - margin_top_dots - paste_height),
+            )
+            pages.append(page)
+
+    calibrated = []
+    if rotation not in {0, 180}:
+        raise RuntimeError("目前標籤方向只支援 0 或 180 度")
+    for page in pages:
+        rotated = page.rotate(rotation, fillcolor=255)
+        shifted = Image.new("L", rotated.size, 255)
+        shifted.paste(rotated, (offset_x, 0))
+        calibrated.append(shifted.point(lambda value: 0 if value < 210 else 255, mode="1"))
+    return calibrated
+
+
+def send_label_to_cups(job, printer):
+    queue = str(printer.get("usb_path") or "").removeprefix("cups:").strip()
+    if not queue or any(char not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-" for char in queue):
+        raise RuntimeError("CUPS 印表機佇列名稱無效")
+    dimensions = label_dimensions_mm(printer)
+    if dimensions is None:
+        raise RuntimeError("CUPS 標籤列印必須選擇寬 × 高的貼紙尺寸")
+    width_mm, height_mm = dimensions
+    gap_mm = float(printer.get("label_gap_mm", 3))
+    print_speed = str(printer.get("label_print_speed", "Normal"))
+    darkness = int(printer.get("label_darkness", 5))
+    post_action = str(printer.get("label_post_action", "TearOff"))
+    with tempfile.TemporaryDirectory(prefix="stalleasy-label-") as temp_dir:
+        image_paths = []
+        for index, page in enumerate(cups_label_pages({**job, "printer": printer}), start=1):
+            image_path = Path(temp_dir) / f"label-{index}.png"
+            page.save(image_path, format="PNG", dpi=(203, 203))
+            image_paths.append(str(image_path))
+        if not image_paths:
+            return
+        result = subprocess.run(
+            [
+                "lp", "-d", queue,
+                "-o", f"media=Custom.{width_mm}x{height_mm}mm",
+                "-o", "PaperType=LabelGaps",
+                "-o", f"GapsHeight={gap_mm:g}",
+                "-o", f"PrintSpeed={print_speed}",
+                "-o", f"Darkness={darkness}",
+                "-o", f"PostAction={post_action}",
+                "-o", "scaling=100",
+                *image_paths,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=False,
+        )
+        if result.returncode != 0:
+            detail = result.stderr.strip() or result.stdout.strip() or "未知錯誤"
+            raise RuntimeError(f"CUPS 列印失敗：{detail}")
+        deadline = time.monotonic() + max(60, len(image_paths) * 20)
+        while time.monotonic() < deadline:
+            pending = subprocess.run(
+                ["lpstat", "-W", "not-completed", "-o", queue],
+                capture_output=True,
+                text=True,
+                timeout=5,
+                check=False,
+            )
+            if not pending.stdout.strip():
+                break
+            time.sleep(0.5)
+        else:
+            raise RuntimeError("CUPS 標籤列印逾時，已停止後續標籤")
+
+
+def cups_queue_available(queue):
+    """Only select CUPS when the configured driver queue exists and is enabled."""
+    try:
+        result = subprocess.run(
+            ["lpstat", "-p", queue],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return result.returncode == 0 and "disabled" not in result.stdout.lower()
 
 
 def native_text_width(value):
@@ -561,7 +899,7 @@ def native_label_bytes(job):
     receipt = job.get("receipt") or {}
     printer = job["printer"]
     encoding = printer.get("encoding", "cp950")
-    columns = 32 if printer.get("paper_width") in {"57mm", "58mm"} else 48
+    columns = max(13, printer_dot_width(printer) // 12)
     order_type_labels = {"dine_in": "內用", "take_out": "外帶", "delivery": "外送"}
     order_type = order_type_labels.get(str(receipt.get("order_type") or "take_out"), "外帶")
     expanded = []
@@ -611,7 +949,7 @@ def hybrid_label_bytes(job):
     """Rasterize CJK text while keeping numeric and symbolic fields native."""
     receipt = job.get("receipt") or {}
     printer = job["printer"]
-    dot_width = 384 if printer.get("paper_width") in {"57mm", "58mm"} else 576
+    dot_width = printer_dot_width(printer)
     margin = 10
     order_type_labels = {"dine_in": "內用", "take_out": "外帶", "delivery": "外送"}
     order_type = order_type_labels.get(str(receipt.get("order_type") or "take_out"), "外帶")
@@ -669,7 +1007,7 @@ def hybrid_label_bytes(job):
 def shift_report_bytes(job):
     report = job.get("receipt") or {}
     printer = job["printer"]
-    dot_width = 384 if printer.get("paper_width") in {"57mm", "58mm"} else 576
+    dot_width = printer_dot_width(printer)
     out = bytearray(ESC + b"@" + ESC + b"2")
     out += GS + b"L\x00\x00" + GS + b"W" + bytes((dot_width & 0xFF, dot_width >> 8))
     out += raster_command(render_shift_report(report, dot_width, job.get("logo_base64")))
@@ -680,7 +1018,7 @@ def shift_report_bytes(job):
 def receipt_bytes(job):
     receipt = job.get("receipt") or {}
     printer = job["printer"]
-    dot_width = 384 if printer.get("paper_width") in {"57mm", "58mm"} else 576
+    dot_width = printer_dot_width(printer)
     # Reset and use the printer's compact default line spacing. Do not add a
     # leading feed: on cutterless 58 mm models that becomes a large top margin.
     out = bytearray(ESC + b"@" + ESC + b"2")
@@ -695,6 +1033,8 @@ def receipt_bytes(job):
 
 def command_bytes(job):
     action = job["action"]
+    command_mode = str(job["printer"].get("command_mode") or "auto").lower()
+    dimensions = label_dimensions_mm(job["printer"])
     if action == "open_drawer":
         return ESC + b"@" + ESC + b"p\x00\x19\xfa"
     if action == "print_number_ticket":
@@ -702,6 +1042,10 @@ def command_bytes(job):
     if action == "print_kitchen":
         return kitchen_ticket_bytes(job)
     if action == "print_label":
+        if command_mode == "tspl" and not dimensions:
+            raise RuntimeError("TSPL 模式必須選擇寬 × 高的貼紙尺寸")
+        if dimensions and command_mode != "escpos":
+            return tspl_label_bytes(job)
         render_mode = job["printer"].get("label_render_mode", "native")
         if render_mode == "native":
             return native_label_bytes(job)
@@ -718,18 +1062,49 @@ def command_bytes(job):
             "total": 100,
             "cash_received": 500,
             "change": 400,
-            "lines": [{"name": "紅茶（正常甜度）", "quantity": 2, "amount": 100}],
+            "lines": [{"name": "紅茶（正常甜度）", "quantity": 1, "amount": 50}],
         }
+        if command_mode == "tspl" and not dimensions:
+            raise RuntimeError("TSPL 模式必須選擇寬 × 高的貼紙尺寸")
+        if dimensions and command_mode != "escpos":
+            return tspl_test_command(*dimensions)
+        if dimensions and command_mode == "escpos":
+            return label_bytes({**job, "receipt": sample})
         return receipt_bytes({**job, "receipt": sample})
     return receipt_bytes(job)
 
 
 def send_to_printer(job, printer):
     job = {**job, "printer": printer}
+    if (
+        printer["type"] == "usb"
+        and str(printer.get("usb_path") or "").startswith("cups:")
+        and job["action"] in {"print_label", "test_print"}
+    ):
+        queue = str(printer.get("usb_path") or "").removeprefix("cups:").strip()
+        if cups_queue_available(queue):
+            send_label_to_cups(job, printer)
+            return
+        printer = {
+            **printer,
+            "usb_path": printer.get("usb_fallback_path") or "/dev/usb/lp0",
+        }
+        job = {**job, "printer": printer}
     data = command_bytes(job)
     if printer["type"] == "network":
         with socket.create_connection((printer["ip"], int(printer.get("port", 9100))), timeout=5) as sock:
             sock.sendall(data)
+    elif printer["type"] == "bluetooth":
+        address = str(printer.get("bluetooth_address") or "").strip()
+        if not address:
+            raise RuntimeError("尚未設定藍牙印表機位址")
+        try:
+            with socket.socket(socket.AF_BLUETOOTH, socket.SOCK_STREAM, socket.BTPROTO_RFCOMM) as sock:
+                sock.settimeout(10)
+                sock.connect((address, int(printer.get("bluetooth_channel", 1))))
+                sock.sendall(data)
+        except OSError as exc:
+            raise RuntimeError(f"無法連線藍牙印表機 {address}：{exc}") from exc
     else:
         path = Path(printer.get("usb_path", "/dev/usb/lp0"))
         ensure_usb_device_node(path)
@@ -739,8 +1114,34 @@ def send_to_printer(job, printer):
             raise RuntimeError(f"找不到 USB 印表機裝置：{path}") from exc
         if not stat.S_ISCHR(device_mode):
             raise RuntimeError(f"USB 路徑不是實體印表機裝置：{path}")
-        with open(path, "wb", buffering=0) as device:
-            device.write(data)
+        write_usb_with_timeout(path, data)
+
+
+def write_usb_with_timeout(path, data, timeout_seconds=5):
+    """Write without allowing an offline USB printer to stall the job queue."""
+    descriptor = os.open(path, os.O_WRONLY | os.O_NONBLOCK)
+    deadline = time.monotonic() + timeout_seconds
+    offset = 0
+    chunk_size = 1024
+    try:
+        while offset < len(data):
+            if time.monotonic() >= deadline:
+                raise RuntimeError(f"USB 印表機未回應（{timeout_seconds} 秒）：{path}")
+            try:
+                # usblp devices such as the Xprinter T271 reject a large
+                # non-blocking write when it exceeds their USB buffer.
+                written = os.write(descriptor, data[offset:offset + chunk_size])
+                if written == 0:
+                    raise RuntimeError(f"USB 印表機無法接收資料：{path}")
+                offset += written
+                # Give compact label-printer controllers time to drain each
+                # bulk packet instead of filling the device buffer at once.
+                if offset < len(data):
+                    time.sleep(0.01)
+            except BlockingIOError:
+                time.sleep(0.05)
+    finally:
+        os.close(descriptor)
 
 
 def ensure_usb_device_node(path):
@@ -789,7 +1190,7 @@ def usb_devices():
     for sys_device in sorted(Path("/sys/class/usbmisc").glob("lp*")):
         ensure_usb_device_node(Path("/dev/usb") / sys_device.name)
 
-    devices = []
+    devices = cups_devices()
     for path in sorted(Path("/dev/usb").glob("lp*")):
         try:
             if not stat.S_ISCHR(path.stat().st_mode):
@@ -810,6 +1211,62 @@ def usb_devices():
         if details:
             label = " ".join(details) + f" ({path})"
         devices.append({"type": "usb", "value": str(path), "label": label})
+    return devices
+
+
+def cups_devices():
+    """Expose installed CUPS queues beside raw USB paths in device scanning."""
+    try:
+        result = subprocess.run(
+            ["lpstat", "-e"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+    devices = []
+    for queue in result.stdout.splitlines():
+        queue = queue.strip()
+        if not queue or any(char not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-" for char in queue):
+            continue
+        status = subprocess.run(
+            ["lpstat", "-p", queue],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+        state = "可用" if status.returncode == 0 and "disabled" not in status.stdout.lower() else "停用"
+        devices.append({
+            "type": "usb",
+            "value": f"cups:{queue}",
+            "label": f"{queue}（官方驅動，{state}，建議）",
+        })
+    return devices
+
+
+def bluetooth_devices():
+    """Return devices already paired through BlueZ; pairing remains an OS action."""
+    try:
+        result = subprocess.run(
+            ["bluetoothctl", "devices", "Paired"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+    devices = []
+    for line in result.stdout.splitlines():
+        parts = line.strip().split(maxsplit=2)
+        if len(parts) < 2 or parts[0] != "Device":
+            continue
+        address = parts[1].upper()
+        name = parts[2] if len(parts) > 2 else address
+        devices.append({"type": "bluetooth", "value": address, "label": f"{name} ({address})"})
     return devices
 
 
@@ -870,7 +1327,7 @@ def probe_network_device(ip, local_addresses):
 
 
 def scan_devices():
-    devices = usb_devices()
+    devices = usb_devices() + bluetooth_devices()
     hosts = set()
     local_addresses = set()
     for network in local_networks():

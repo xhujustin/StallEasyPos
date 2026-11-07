@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { shiftApi } from '@/lib/api/shifts';
@@ -27,6 +27,8 @@ export default function ShiftOpeningPage() {
     const [shuttingDown, setShuttingDown] = useState(false);
     const [isLocalAccess, setIsLocalAccess] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const displayRef = useRef<HTMLDivElement>(null);
+    const dragRef = useRef<{ x: number; scrollLeft: number } | null>(null);
     const showShutdown = canShutdown && isLocalAccess;
 
     useEffect(() => {
@@ -93,6 +95,10 @@ export default function ShiftOpeningPage() {
             // eslint-disable-next-line
             const result = new Function('return ' + displayValue)();
             const formatted = String(Math.round(result * 100) / 100); // Round to 2 decimals
+            if (!Number.isFinite(result)) {
+                setError('計算結果無效');
+                return null;
+            }
             setDisplayValue(formatted);
             return formatted;
         } catch (e) {
@@ -167,6 +173,32 @@ export default function ShiftOpeningPage() {
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [displayValue]);
 
+    useEffect(() => {
+        const display = displayRef.current;
+        if (display) display.scrollLeft = display.scrollWidth;
+    }, [displayValue]);
+
+    const startDisplayDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+        const display = displayRef.current;
+        if (!display) return;
+        event.preventDefault();
+        dragRef.current = { x: event.clientX, scrollLeft: display.scrollLeft };
+        display.setPointerCapture(event.pointerId);
+    };
+    const moveDisplayDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+        const display = displayRef.current;
+        if (!display || !dragRef.current) return;
+        event.preventDefault();
+        display.scrollLeft = dragRef.current.scrollLeft - (event.clientX - dragRef.current.x);
+    };
+    const stopDisplayDrag = () => { dragRef.current = null; };
+    const scrollDisplay = (event: React.WheelEvent<HTMLDivElement>) => {
+        const display = displayRef.current;
+        if (!display || display.scrollWidth <= display.clientWidth) return;
+        event.preventDefault();
+        display.scrollLeft += event.deltaX || event.deltaY;
+    };
+
     return (
         <div className="h-full w-full flex items-center justify-center p-6 bg-slate-50 min-h-[85vh]">
             <Card className="w-full max-w-4xl shadow-xl border-slate-200 grid grid-cols-1 md:grid-cols-2 overflow-hidden h-[600px]">
@@ -188,8 +220,10 @@ export default function ShiftOpeningPage() {
                                 <Label htmlFor="displayCash" className="text-slate-500 mb-2 block">錢箱預備金</Label>
                                 <div className="relative">
                                     <span className="absolute left-0 top-1/2 -translate-y-1/2 text-slate-400 text-2xl font-light">$</span>
-                                    <div className="w-full text-4xl font-mono font-bold text-[#D4AF37] text-right pl-6 h-12 flex items-center justify-end overflow-hidden whitespace-nowrap">
-                                        {displayValue || <span className="text-slate-200">0</span>}
+                                    <div ref={displayRef} onPointerDown={startDisplayDrag} onPointerMove={moveDisplayDrag} onPointerUp={stopDisplayDrag} onPointerCancel={stopDisplayDrag} onLostPointerCapture={stopDisplayDrag} onWheel={scrollDisplay} className="w-full h-12 overflow-x-scroll whitespace-nowrap cursor-grab active:cursor-grabbing select-none touch-none overscroll-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                                        <div className="inline-flex min-w-full w-max h-full pl-6 items-center justify-end text-4xl font-mono font-bold text-[#D4AF37]">
+                                            {displayValue || <span className="text-slate-200">0</span>}
+                                        </div>
                                     </div>
                                 </div>
                             </div>

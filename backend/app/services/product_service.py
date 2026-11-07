@@ -44,11 +44,12 @@ class ProductService:
         await db.flush() # 確保取得 product.id
 
         if materials_data:
-            for mat in materials_data:
+            for index, mat in enumerate(materials_data, start=1):
                 pm = ProductMaterial(
                     product_id=product.id,
                     material_id=mat.material_id,
-                    quantity=mat.quantity
+                    quantity=mat.quantity,
+                    display_order=mat.display_order or index,
                 )
                 db.add(pm)
 
@@ -167,11 +168,12 @@ class ProductService:
             await db.execute(delete(ProductMaterial).where(ProductMaterial.product_id == product.id))
             
             # 新增新的關聯
-            for mat in materials_data:
+            for index, mat in enumerate(materials_data, start=1):
                 pm = ProductMaterial(
                     product_id=product.id,
                     material_id=mat.material_id,
-                    quantity=mat.quantity
+                    quantity=mat.quantity,
+                    display_order=mat.display_order or index,
                 )
                 db.add(pm)
 

@@ -175,6 +175,7 @@ export function CheckoutModal({ open, onClose }: CheckoutModalProps) {
                 // Call API
                 const result = await orderApi.create(storeId, orderData);
                 const order = result.data;
+                const hasPrintableItems = order.items.some(item => !item.skip_printing);
 
                 // Hardware failures must not roll back a completed sale.
                 try {
@@ -190,16 +191,16 @@ export function CheckoutModal({ open, onClose }: CheckoutModalProps) {
                         await hardwareApi.openDrawer(storeId);
                     }
                     // Number ticket comes out first, followed by the customer's receipt.
-                    if (!currentPrintedOutputs.includes('number_ticket') && (configuredPrinters.length ? hasOutput('number_ticket') : device.print_number_ticket) && order) {
+                    if (hasPrintableItems && !currentPrintedOutputs.includes('number_ticket') && (configuredPrinters.length ? hasOutput('number_ticket') : device.print_number_ticket) && order) {
                         await hardwareApi.printNumberTicket(storeId, order, profile.store_name);
                     }
-                    if (!currentPrintedOutputs.includes('receipt') && (configuredPrinters.length ? hasOutput('receipt') : device.auto_print_receipt) && order) {
+                    if (hasPrintableItems && !currentPrintedOutputs.includes('receipt') && (configuredPrinters.length ? hasOutput('receipt') : device.auto_print_receipt) && order) {
                         await hardwareApi.printOrder(storeId, order, profile.store_name);
                     }
-                    if (!currentPrintedOutputs.includes('kitchen') && configuredPrinters.length && hasOutput('kitchen') && order) {
+                    if (hasPrintableItems && !currentPrintedOutputs.includes('kitchen') && configuredPrinters.length && hasOutput('kitchen') && order) {
                         await hardwareApi.printKitchen(storeId, order, profile.store_name);
                     }
-                    if (!currentPrintedOutputs.includes('label') && configuredPrinters.length && hasOutput('label') && order) {
+                    if (hasPrintableItems && !currentPrintedOutputs.includes('label') && configuredPrinters.length && hasOutput('label') && order) {
                         await hardwareApi.printLabels(storeId, order, profile.store_name);
                     }
                 } catch (hardwareError) {

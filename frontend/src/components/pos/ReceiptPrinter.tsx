@@ -49,7 +49,7 @@ export const ReceiptPrinter = ({ order }: ReceiptPrinterProps) => {
                         </tr>
                     </thead>
                     <tbody>
-                        {order.items.map((item, idx) => (
+                        {order.items.filter(item => !item.skip_printing).map((item, idx) => (
                             <React.Fragment key={idx}>
                                 <tr>
                                     <td className="py-1 pt-2 align-top font-bold">
@@ -65,6 +65,7 @@ export const ReceiptPrinter = ({ order }: ReceiptPrinterProps) => {
                                         <td colSpan={4} className="pb-1 text-left text-xs text-slate-500">
                                             {item.options.map((opt: any, i) => (
                                                 <span key={i} className="mr-2">
+                                                    {opt.operation_type === 'add' ? '＋ ' : opt.operation_type === 'replace' ? '⇄ ' : opt.operation_type === 'remove' ? '－ ' : ''}
                                                     {opt.option_name}
                                                     {opt.price_adjustment > 0 && `(+${opt.price_adjustment})`}
                                                 </span>

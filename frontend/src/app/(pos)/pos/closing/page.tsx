@@ -1,14 +1,14 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/store/auth-store';
-import { shiftApi, Shift } from '@/lib/api/shifts';
+import { shiftApi, Shift, ShiftExpense } from '@/lib/api/shifts';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Coins, Receipt, DollarSign, AlertCircle, Calculator, Equal, Delete } from 'lucide-react';
+import { Coins, Receipt, DollarSign, AlertCircle, Equal, Delete, Plus, X } from 'lucide-react';
 import { ManagerPinDialog } from '@/components/pos/manager-pin-dialog';
 import React from 'react';
 import { hardwareApi } from '@/lib/api/hardware';
@@ -32,6 +32,9 @@ export default function ClosingPage() {
         cash_sales?: number;
         cash_added?: number;
         cash_removed?: number;
+        total_expenses?: number;
+        cash_expenses?: number;
+        net_operating_profit?: number;
     }>({
         order_count: 0,
         total_sales: 0,
@@ -40,6 +43,9 @@ export default function ClosingPage() {
         cash_added: 0,
         cash_removed: 0
     });
+    const [expenses, setExpenses] = useState<ShiftExpense[]>([]);
+    const [showExpenseDialog, setShowExpenseDialog] = useState(false);
+    const [expenseForm, setExpenseForm] = useState({ category: '食材進貨', amount: '', payment_method: 'cash' as 'cash' | 'transfer' | 'card', description: '', supplier: '' });
 
     const [displayValue, setDisplayValue] = useState<string>('');
     const [loading, setLoading] = useState(true);
@@ -49,6 +55,8 @@ export default function ClosingPage() {
     const [isAuthorized, setIsAuthorized] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [drawerLoading, setDrawerLoading] = useState(false);
+    const displayRef = useRef<HTMLDivElement>(null);
+    const dragRef = useRef<{ x: number; scrollLeft: number } | null>(null);
 
     const userRole = getUserRole(user);
 
@@ -67,6 +75,7 @@ export default function ClosingPage() {
             // Fetch Stats
             const currentStats = await shiftApi.getStats(currentShift.id);
             setStats(currentStats);
+            setExpenses(await shiftApi.getExpenses(currentShift.id));
 
         } catch (error) {
             console.error("Failed to fetch shift data:", error);
@@ -107,7 +116,8 @@ export default function ClosingPage() {
     };
 
     const handleExactCash = () => {
-        setDisplayValue(expectedCash.toString());
+        const value = String(Math.round(expectedCash * 100) / 100);
+        setDisplayValue(value);
         setError(null);
     };
 
@@ -131,6 +141,10 @@ export default function ClosingPage() {
             // eslint-disable-next-line
             const result = new Function('return ' + displayValue)();
             const formatted = String(Math.round(result * 100) / 100);
+            if (!Number.isFinite(result)) {
+                setError('計算結果無效');
+                return null;
+            }
             setDisplayValue(formatted);
             return formatted;
         } catch (e) {
@@ -145,7 +159,55 @@ export default function ClosingPage() {
         Number(stats.cash_sales || 0) +
         Number(stats.cash_added || 0) -
         Number(stats.cash_removed || 0)
+        - Number(stats.cash_expenses || 0)
     );
+
+    useEffect(() => {
+        const display = displayRef.current;
+        if (display) display.scrollLeft = display.scrollWidth;
+    }, [displayValue]);
+
+    const startDisplayDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+        const display = displayRef.current;
+        if (!display) return;
+        event.preventDefault();
+        dragRef.current = { x: event.clientX, scrollLeft: display.scrollLeft };
+        display.setPointerCapture(event.pointerId);
+    };
+    const moveDisplayDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+        const display = displayRef.current;
+        if (!display || !dragRef.current) return;
+        event.preventDefault();
+        display.scrollLeft = dragRef.current.scrollLeft - (event.clientX - dragRef.current.x);
+    };
+    const stopDisplayDrag = () => { dragRef.current = null; };
+    const scrollDisplay = (event: React.WheelEvent<HTMLDivElement>) => {
+        const display = displayRef.current;
+        if (!display || display.scrollWidth <= display.clientWidth) return;
+        event.preventDefault();
+        display.scrollLeft += event.deltaX || event.deltaY;
+    };
+
+    const saveExpense = async (event: React.FormEvent) => {
+        event.preventDefault();
+        if (!shift || Number(expenseForm.amount) <= 0) return;
+        try {
+            await shiftApi.createExpense(shift.id, { ...expenseForm, amount: Number(expenseForm.amount) });
+            setExpenseForm({ category: '食材進貨', amount: '', payment_method: 'cash', description: '', supplier: '' });
+            setShowExpenseDialog(false);
+            await fetchShiftData();
+            toast.success('支出已記錄');
+        } catch (error) {
+            console.error('Failed to save expense:', error);
+            toast.error('支出記錄失敗');
+        }
+    };
+
+    const voidExpense = async (expense: ShiftExpense) => {
+        if (!shift || !confirm(`作廢「${expense.category}」$${expense.amount}？`)) return;
+        await shiftApi.voidExpense(shift.id, expense.id);
+        await fetchShiftData();
+    };
 
     const buildShiftPrintPayload = (closedShift: Shift, orders: Order[], actual: number, expected: number) => {
         const validOrders = orders.filter(order =>
@@ -176,9 +238,12 @@ export default function ClosingPage() {
             non_cash_sales: Number(closedShift.total_sales || 0) - Number(closedShift.cash_sales || 0),
             total_cost: Number(closedShift.total_sales || 0) - Number(closedShift.total_net_profit || 0),
             total_net_profit: Number(closedShift.total_net_profit || 0),
+            total_expenses: Number(closedShift.total_expenses || 0),
+            net_operating_profit: Number(closedShift.total_net_profit || 0) - Number(closedShift.total_expenses || 0),
             initial_cash: Number(closedShift.initial_cash || 0),
             cash_added: Number(closedShift.cash_added || 0),
             cash_removed: Number(closedShift.cash_removed || 0),
+            cash_expenses: Number(closedShift.cash_expenses || 0),
             expected_cash: expected,
             final_cash: actual,
             shortage: actual - expected,
@@ -353,6 +418,25 @@ export default function ClosingPage() {
                                         <span>-${stats.cash_removed}</span>
                                     </div>
                                 )}
+                                {Number(stats.cash_expenses) > 0 && (
+                                    <div className="flex justify-between text-red-600">
+                                        <span>現金支出</span>
+                                        <span>-${Number(stats.cash_expenses).toFixed(2)}</span>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                        <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
+                            <div className="flex items-center justify-between">
+                                <div><div className="font-bold text-slate-800">當日支出</div><div className="text-xs text-slate-400">合計 ${Number(stats.total_expenses || 0).toFixed(2)}</div></div>
+                                <Button type="button" size="sm" variant="outline" onClick={() => setShowExpenseDialog(true)}><Plus className="w-4 h-4 mr-1" />新增支出</Button>
+                            </div>
+                            <div className="max-h-28 overflow-y-auto divide-y text-xs">
+                                {expenses.filter(item => !item.is_voided).map((item) => <div key={item.id} className="flex items-center justify-between gap-2 py-2">
+                                    <div className="min-w-0"><div className="font-medium truncate">{item.category}{item.supplier ? `｜${item.supplier}` : ''}</div><div className="text-slate-400">{item.payment_method === 'cash' ? '現金' : item.payment_method === 'transfer' ? '轉帳' : '信用卡'}{item.description ? `｜${item.description}` : ''}</div></div>
+                                    <div className="flex items-center gap-2"><span className="font-mono font-bold">${Number(item.amount).toFixed(2)}</span><button type="button" onClick={() => voidExpense(item)} className="text-slate-300 hover:text-red-500"><X size={14} /></button></div>
+                                </div>)}
+                                {!expenses.some(item => !item.is_voided) && <div className="py-3 text-center text-slate-400">尚無支出</div>}
                             </div>
                         </div>
                     </div>
@@ -363,8 +447,10 @@ export default function ClosingPage() {
                             <div className="bg-slate-50 p-4 rounded-xl border-2 border-slate-200">
                                 <div className="flex items-center justify-between">
                                     <span className="text-2xl text-slate-400 font-light">$</span>
-                                    <div className="text-4xl font-mono font-bold text-[#D4AF37] text-right overflow-hidden">
-                                        {displayValue || <span className="text-slate-200">0</span>}
+                                    <div ref={displayRef} onPointerDown={startDisplayDrag} onPointerMove={moveDisplayDrag} onPointerUp={stopDisplayDrag} onPointerCancel={stopDisplayDrag} onLostPointerCapture={stopDisplayDrag} onWheel={scrollDisplay} className="min-w-0 flex-1 overflow-x-scroll whitespace-nowrap cursor-grab active:cursor-grabbing select-none touch-none overscroll-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                                        <div className="inline-flex min-w-full w-max justify-end text-4xl font-mono font-bold text-[#D4AF37] text-right">
+                                            {displayValue || <span className="text-slate-200">0</span>}
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -435,6 +521,19 @@ export default function ClosingPage() {
                 onSuccess={handleManagerAuthorized}
                 onCancel={() => setShowManagerPin(false)}
             />
+            {showExpenseDialog && <div className="fixed inset-0 z-[60] bg-black/40 flex items-center justify-center p-4">
+                <form onSubmit={saveExpense} className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md space-y-4">
+                    <div className="flex items-center justify-between"><div><h2 className="text-xl font-bold">新增當日支出</h2><p className="text-xs text-slate-400 mt-1">現金付款會扣除系統應有現金</p></div><button type="button" onClick={() => setShowExpenseDialog(false)}><X className="text-slate-400" /></button></div>
+                    <div className="grid grid-cols-2 gap-3">
+                        <div><Label>支出分類</Label><select value={expenseForm.category} onChange={e => setExpenseForm({ ...expenseForm, category: e.target.value })} className="mt-1 w-full border rounded-lg px-3 py-2"><option>食材進貨</option><option>耗材</option><option>運費</option><option>水電</option><option>維修</option><option>雜支</option><option>其他</option></select></div>
+                        <div><Label>金額</Label><Input required type="number" min="0.01" step="0.01" value={expenseForm.amount} onChange={e => setExpenseForm({ ...expenseForm, amount: e.target.value })} className="mt-1" /></div>
+                        <div><Label>付款方式</Label><select value={expenseForm.payment_method} onChange={e => setExpenseForm({ ...expenseForm, payment_method: e.target.value as 'cash' | 'transfer' | 'card' })} className="mt-1 w-full border rounded-lg px-3 py-2"><option value="cash">現金</option><option value="transfer">轉帳</option><option value="card">信用卡</option></select></div>
+                        <div><Label>供應商（選填）</Label><Input value={expenseForm.supplier} onChange={e => setExpenseForm({ ...expenseForm, supplier: e.target.value })} className="mt-1" /></div>
+                    </div>
+                    <div><Label>說明（選填）</Label><Input value={expenseForm.description} onChange={e => setExpenseForm({ ...expenseForm, description: e.target.value })} className="mt-1" /></div>
+                    <div className="flex gap-3 pt-2"><Button type="button" variant="outline" className="flex-1" onClick={() => setShowExpenseDialog(false)}>取消</Button><Button type="submit" className="flex-1 bg-[#D4AF37] hover:bg-[#C5A028]">儲存支出</Button></div>
+                </form>
+            </div>}
         </div>
     );
 }

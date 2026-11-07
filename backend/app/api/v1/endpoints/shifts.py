@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import get_db, get_current_user_id
 from app.services.shift_service import ShiftService
-from app.schemas.shift import ShiftOut, ShiftCreate, ShiftClose, CashOperation
+from app.schemas.shift import ShiftOut, ShiftCreate, ShiftClose, CashOperation, ShiftExpenseCreate, ShiftExpenseOut
 from app.schemas.common import ResponseBase
 
 router = APIRouter()
@@ -65,6 +65,21 @@ async def modify_shift_cash(
         reason=data.reason
     )
     return ResponseBase(data=shift)
+
+@router.get("/{shift_id}/expenses", response_model=ResponseBase[List[ShiftExpenseOut]])
+async def get_shift_expenses(shift_id: int, db: AsyncSession = Depends(get_db)) -> Any:
+    return ResponseBase(data=await ShiftService.get_expenses(db, shift_id))
+
+@router.post("/{shift_id}/expenses", response_model=ResponseBase[ShiftExpenseOut])
+async def create_shift_expense(
+    shift_id: int, data: ShiftExpenseCreate, db: AsyncSession = Depends(get_db),
+    current_user_id: int = Depends(get_current_user_id),
+) -> Any:
+    return ResponseBase(data=await ShiftService.create_expense(db, shift_id, current_user_id, data))
+
+@router.delete("/{shift_id}/expenses/{expense_id}", status_code=204)
+async def void_shift_expense(shift_id: int, expense_id: int, db: AsyncSession = Depends(get_db)) -> None:
+    await ShiftService.void_expense(db, shift_id, expense_id)
 
 @router.get("/", response_model=ResponseBase[List[ShiftOut]])
 async def get_shift_history(

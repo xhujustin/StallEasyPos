@@ -15,6 +15,7 @@ export default function AdminReportsPage() {
     const [loading, setLoading] = useState(false);
     const [expandedRows, setExpandedRows] = useState<Record<number, boolean>>({});
     const [currentPage, setCurrentPage] = useState(1);
+    const [filtersReady, setFiltersReady] = useState(false);
     const ITEMS_PER_PAGE = 20;
 
     // Filters
@@ -23,6 +24,38 @@ export default function AdminReportsPage() {
     const [endDate, setEndDate] = useState<string>(today);
     const [searchTerm, setSearchTerm] = useState<string>('');
     const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        setStartDate(params.get('startDate') || today);
+        setEndDate(params.get('endDate') || today);
+        setSearchTerm(params.get('search') || '');
+        setCurrentPage(Math.max(1, Number(params.get('page')) || 1));
+        setFiltersReady(true);
+    }, []);
+
+    const persistFilters = (next: {
+        startDate?: string;
+        endDate?: string;
+        searchTerm?: string;
+        currentPage?: number;
+    }) => {
+        const params = new URLSearchParams(window.location.search);
+        const nextStartDate = next.startDate ?? startDate;
+        const nextEndDate = next.endDate ?? endDate;
+        const nextSearchTerm = next.searchTerm ?? searchTerm;
+        const nextPage = next.currentPage ?? currentPage;
+
+        params.set('startDate', nextStartDate);
+        params.set('endDate', nextEndDate);
+        if (nextSearchTerm) params.set('search', nextSearchTerm);
+        else params.delete('search');
+        if (nextPage > 1) params.set('page', String(nextPage));
+        else params.delete('page');
+
+        const query = params.toString();
+        window.history.replaceState(window.history.state, '', `/admin/reports${query ? `?${query}` : ''}`);
+    };
 
     const fetchShifts = async () => {
         if (!selectedStoreId) return;
@@ -44,9 +77,9 @@ export default function AdminReportsPage() {
     };
 
     useEffect(() => {
+        if (!filtersReady) return;
         fetchShifts();
-        setCurrentPage(1);
-    }, [selectedStoreId, startDate, endDate]);
+    }, [selectedStoreId, startDate, endDate, filtersReady]);
 
     const toggleRow = (id: number) => {
         setExpandedRows(prev => ({ ...prev, [id]: !prev[id] }));
@@ -158,8 +191,10 @@ export default function AdminReportsPage() {
                                 placeholder="搜尋班次編號..."
                                 value={searchTerm}
                                 onChange={(e) => {
-                                    setSearchTerm(e.target.value);
+                                    const value = e.target.value;
+                                    setSearchTerm(value);
                                     setCurrentPage(1);
+                                    persistFilters({ searchTerm: value, currentPage: 1 });
                                 }}
                                 className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#D4AF37]/20 focus:border-[#D4AF37] outline-none transition-all text-sm"
                             />
@@ -174,7 +209,11 @@ export default function AdminReportsPage() {
                             <input
                                 type="date"
                                 value={startDate}
-                                onChange={(e) => setStartDate(e.target.value)}
+                                onChange={(e) => {
+                                    setStartDate(e.target.value);
+                                    setCurrentPage(1);
+                                    persistFilters({ startDate: e.target.value, currentPage: 1 });
+                                }}
                                 className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#D4AF37]/20 focus:border-[#D4AF37] outline-none transition-all text-sm appearance-none cursor-pointer"
                             />
                         </div>
@@ -188,7 +227,11 @@ export default function AdminReportsPage() {
                             <input
                                 type="date"
                                 value={endDate}
-                                onChange={(e) => setEndDate(e.target.value)}
+                                onChange={(e) => {
+                                    setEndDate(e.target.value);
+                                    setCurrentPage(1);
+                                    persistFilters({ endDate: e.target.value, currentPage: 1 });
+                                }}
                                 className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#D4AF37]/20 focus:border-[#D4AF37] outline-none transition-all text-sm appearance-none cursor-pointer"
                             />
                         </div>
@@ -241,7 +284,8 @@ export default function AdminReportsPage() {
                                         Number(shift.initial_cash) +
                                         Number(shift.cash_sales || 0) +
                                         Number(shift.cash_added || 0) -
-                                        Number(shift.cash_removed || 0)
+                                        Number(shift.cash_removed || 0) -
+                                        Number(shift.cash_expenses || 0)
                                     );
 
                                     let diff = null;
@@ -303,6 +347,7 @@ export default function AdminReportsPage() {
                                                     <div className="flex flex-col items-end">
                                                         <span className="text-green-600 text-xs font-medium">+{formatCurrency(shift.cash_added)}</span>
                                                         <span className="text-red-500 text-xs font-medium">-{formatCurrency(shift.cash_removed)}</span>
+                                                        {Number(shift.cash_expenses || 0) > 0 && <span className="text-red-600 text-xs font-medium">支出 -{formatCurrency(shift.cash_expenses)}</span>}
                                                     </div>
                                                 </td>
                                                 <td className="px-4 py-4 text-right font-bold text-gray-900">
@@ -397,7 +442,11 @@ export default function AdminReportsPage() {
                     {totalPages > 1 && (
                         <div className="flex items-center gap-1 order-1 sm:order-2">
                             <button
-                                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                                onClick={() => {
+                                    const page = Math.max(1, currentPage - 1);
+                                    setCurrentPage(page);
+                                    persistFilters({ currentPage: page });
+                                }}
                                 disabled={currentPage === 1}
                                 className="p-1.5 rounded-lg border border-gray-200 bg-white text-gray-400 hover:text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                             >
@@ -415,7 +464,10 @@ export default function AdminReportsPage() {
                                         return (
                                             <button
                                                 key={pageNum}
-                                                onClick={() => setCurrentPage(pageNum)}
+                                                onClick={() => {
+                                                    setCurrentPage(pageNum);
+                                                    persistFilters({ currentPage: pageNum });
+                                                }}
                                                 className={cn(
                                                     "w-8 h-8 rounded-lg text-sm font-bold transition-all",
                                                     currentPage === pageNum
@@ -437,7 +489,11 @@ export default function AdminReportsPage() {
                             </div>
 
                             <button
-                                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                                onClick={() => {
+                                    const page = Math.min(totalPages, currentPage + 1);
+                                    setCurrentPage(page);
+                                    persistFilters({ currentPage: page });
+                                }}
                                 disabled={currentPage === totalPages}
                                 className="p-1.5 rounded-lg border border-gray-200 bg-white text-gray-400 hover:text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                             >

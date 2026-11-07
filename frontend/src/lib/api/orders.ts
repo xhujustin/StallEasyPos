@@ -71,6 +71,7 @@ export interface OrderItem {
     quantity: number;
     note?: string;
     options?: any[]; // JSONB from backend
+    skip_printing: boolean;
 }
 
 export enum OrderStatus {

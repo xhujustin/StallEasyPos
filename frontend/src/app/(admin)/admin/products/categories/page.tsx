@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { categoryApi, type Category, type CategoryCreate } from '@/lib/api/categories';
@@ -8,9 +8,17 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Plus, Pencil, Trash2, Search, ArrowLeft } from 'lucide-react';
+import { Plus, Pencil, Trash2, ArrowLeft, GripVertical } from 'lucide-react';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
+import { DndContext, type DragEndEvent, PointerSensor, closestCenter, useSensor, useSensors } from '@dnd-kit/core';
+import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+
+function SortableCategoryRow({ category, children }: { category: Category; children: (handle: { attributes: object; listeners: object | undefined }) => ReactNode }) {
+    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: category.id });
+    return <tr ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition }} className={isDragging ? 'bg-amber-50 opacity-80' : 'hover:bg-gray-50/50'}>{children({ attributes, listeners })}</tr>;
+}
 
 export default function CategoriesPage() {
     const router = useRouter();
@@ -21,11 +29,11 @@ export default function CategoriesPage() {
     const [searchQuery, setSearchQuery] = useState('');
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [editingCategory, setEditingCategory] = useState<Category | null>(null);
-    const [formData, setFormData] = useState<{ name: string; description: string; display_order: number }>({
+    const [formData, setFormData] = useState<{ name: string; description: string }>({
         name: '',
         description: '',
-        display_order: 0,
     });
+    const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
     useEffect(() => {
         setMounted(true);
@@ -62,14 +70,12 @@ export default function CategoriesPage() {
             setFormData({
                 name: category.name,
                 description: category.description || '',
-                display_order: category.display_order || 0,
             });
         } else {
             setEditingCategory(null);
             setFormData({
                 name: '',
                 description: '',
-                display_order: 0,
             });
         }
         setIsDialogOpen(true);
@@ -81,7 +87,6 @@ export default function CategoriesPage() {
         setFormData({
             name: '',
             description: '',
-            display_order: 0,
         });
     };
 
@@ -94,13 +99,12 @@ export default function CategoriesPage() {
                 await categoryApi.updateCategory(editingCategory.id, selectedStoreId, {
                     name: formData.name,
                     description: formData.description,
-                    display_order: formData.display_order,
                 });
             } else {
                 await categoryApi.createCategory(selectedStoreId, {
                     name: formData.name,
                     description: formData.description,
-                    display_order: formData.display_order,
+                    display_order: categories.length + 1,
                 });
             }
             await loadCategories();
@@ -125,6 +129,15 @@ export default function CategoriesPage() {
     const filteredCategories = categories.filter((category) =>
         category.name.toLowerCase().includes(searchQuery.toLowerCase())
     );
+    const handleDragEnd = async ({ active, over }: DragEndEvent) => {
+        if (!over || active.id === over.id || !selectedStoreId || searchQuery) return;
+        const oldIndex = categories.findIndex((category) => category.id === active.id);
+        const newIndex = categories.findIndex((category) => category.id === over.id);
+        const next = arrayMove(categories, oldIndex, newIndex);
+        setCategories(next);
+        await categoryApi.reorderCategories(selectedStoreId, next.map((category) => category.id));
+        await loadCategories();
+    };
 
     if (!mounted || loading) {
         return (
@@ -159,13 +172,16 @@ export default function CategoriesPage() {
             </div>
 
             {/* Content Table */}
+            {searchQuery && <p className="text-xs text-amber-600 mb-2">搜尋中暫停拖曳排序，清除搜尋後即可調整。</p>}
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <SortableContext items={filteredCategories.map((category) => category.id)} strategy={verticalListSortingStrategy}>
             <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
                 <table className="w-full text-left">
                     <thead>
                         <tr className="bg-gray-50 border-b border-gray-200">
+                            <th className="w-14 px-4 py-4"></th>
                             <th className="px-6 py-4 text-xs uppercase tracking-wider text-gray-400 font-bold">分類名稱</th>
                             <th className="px-6 py-4 text-xs uppercase tracking-wider text-gray-400 font-bold">描述</th>
-                            <th className="px-6 py-4 text-xs uppercase tracking-wider text-gray-400 font-bold">顯示排序</th>
                             <th className="px-6 py-4 text-xs uppercase tracking-wider text-gray-400 font-bold text-center">操作</th>
                         </tr>
                     </thead>
@@ -179,15 +195,11 @@ export default function CategoriesPage() {
                                 <td colSpan={4} className="px-6 py-12 text-center text-gray-400">尚無分類數據</td>
                             </tr>
                         ) : (
-                            categories.map((category) => (
-                                <tr key={category.id} className="hover:bg-gray-50/50 transition-colors">
+                            filteredCategories.map((category) => (
+                                <SortableCategoryRow key={category.id} category={category}>{({ attributes, listeners }) => <>
+                                    <td className="px-4 py-4"><button type="button" disabled={Boolean(searchQuery)} {...attributes} {...listeners} className="cursor-grab text-gray-400 disabled:opacity-30 active:cursor-grabbing"><GripVertical size={19} /></button></td>
                                     <td className="px-6 py-4 font-bold text-gray-800">{category.name}</td>
                                     <td className="px-6 py-4 text-gray-500 text-sm">{category.description || '-'}</td>
-                                    <td className="px-6 py-4">
-                                        <span className="inline-flex items-center px-2 py-0.5 bg-gray-100 rounded text-xs font-bold text-gray-600">
-                                            Priority: {category.display_order}
-                                        </span>
-                                    </td>
                                     <td className="px-6 py-4">
                                         <div className="flex items-center justify-center gap-2">
                                             <button
@@ -206,12 +218,14 @@ export default function CategoriesPage() {
                                             </button>
                                         </div>
                                     </td>
-                                </tr>
+                                </>}</SortableCategoryRow>
                             ))
                         )}
                     </tbody>
                 </table>
             </div>
+            </SortableContext>
+            </DndContext>
 
             {/* Form Dialog */}
             {isDialogOpen && (
@@ -240,15 +254,6 @@ export default function CategoriesPage() {
                                         onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                                         className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#D4AF37]/20 focus:border-[#D4AF37] outline-none transition-all min-h-[80px]"
                                         placeholder="簡單描述此分類內容..."
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-bold text-gray-700 mb-1.5 ml-1">顯示排序 (數字越小越前面)</label>
-                                    <input
-                                        type="number"
-                                        value={formData.display_order}
-                                        onChange={(e) => setFormData({ ...formData, display_order: parseInt(e.target.value) })}
-                                        className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#D4AF37]/20 focus:border-[#D4AF37] outline-none transition-all font-mono"
                                     />
                                 </div>
                             </div>

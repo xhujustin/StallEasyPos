@@ -7,10 +7,31 @@ import { formatDateTime } from '@/lib/utils';
 export type HeldOrderPrintAction = 'print_receipt' | 'print_number_ticket' | 'print_kitchen' | 'print_label';
 
 export interface DetectedPrinter {
-    type: 'usb' | 'network';
+    type: 'usb' | 'network' | 'bluetooth';
     value: string;
     label: string;
 }
+
+const optionOperationIcon = (operationType?: string) => ({
+    add: '＋',
+    replace: '⇄',
+    remove: '－',
+}[operationType || ''] || '');
+
+const formatPrintedOption = (option: { option_name?: string; operation_type?: string; price_adjustment?: number; materials?: Array<{ quantity?: number }> }) => {
+    const hasAddedMaterial = (option.materials || []).some(material => Number(material.quantity) > 0);
+    const hasRemovedMaterial = (option.materials || []).some(material => Number(material.quantity) < 0);
+    const inferredOperation = hasAddedMaterial && hasRemovedMaterial
+        ? 'replace'
+        : hasRemovedMaterial
+            ? 'remove'
+            : hasAddedMaterial
+                ? 'add'
+                : undefined;
+    const icon = optionOperationIcon(option.operation_type || inferredOperation);
+    const price = Number(option.price_adjustment || 0);
+    return `${icon ? `${icon} ` : ''}${option.option_name || ''}${price > 0 ? ` (+$${price})` : ''}`;
+};
 
 export const hardwareApi = {
     run: async (storeId: number, action: 'print_receipt' | 'print_kitchen' | 'print_label' | 'print_number_ticket' | 'print_shift_report' | 'open_drawer' | 'test_print' | 'scan_devices', receipt?: Record<string, unknown>, printerId?: string) => {
@@ -58,7 +79,7 @@ export const hardwareApi = {
         }
         throw new Error('裝置掃描逾時');
     },
-    printOrder: (storeId: number, order: Order, storeName = 'StallEasy POS') => hardwareApi.run(storeId, 'print_receipt', {
+    printOrder: (storeId: number, order: Order, storeName = 'StallEasy POS', includeSkipped = false, printerId?: string) => hardwareApi.run(storeId, 'print_receipt', {
         order_no: String(order.order_no),
         shift_number: order.shift_number,
         store_name: storeName,
@@ -77,65 +98,63 @@ export const hardwareApi = {
         total: order.total_amount,
         cash_received: order.cash_received,
         change: order.change_amount,
-        lines: order.items.map(item => ({
+        lines: order.items.filter(item => includeSkipped || !item.skip_printing).map(item => ({
             name: item.name_snapshot,
             quantity: Number(item.quantity),
             // price_snapshot already includes all option adjustments on the backend.
             amount: Number(item.price_snapshot) * Number(item.quantity),
             unit_price: Number(item.price_snapshot),
-            options: (item.options || []).map((option: any) =>
-                `${option.option_name}${Number(option.price_adjustment || 0) > 0 ? ` (+$${Number(option.price_adjustment)})` : ''}`
-            ),
+            options: (item.options || []).map((option: any) => formatPrintedOption(option)),
             note: item.note || undefined,
         })),
-    }),
-    printNumberTicket: (storeId: number, order: Order, storeName = 'StallEasy POS') => hardwareApi.run(storeId, 'print_number_ticket', {
+    }, printerId),
+    printNumberTicket: (storeId: number, order: Order, storeName = 'StallEasy POS', printerId?: string) => hardwareApi.run(storeId, 'print_number_ticket', {
         order_no: String(order.order_no),
         store_name: storeName,
         created_at: formatDateTime(order.created_at, order.timezone),
         total: order.total_amount,
         lines: [],
-    }),
-    printKitchen: (storeId: number, order: Order, storeName = 'StallEasy POS') => hardwareApi.run(storeId, 'print_kitchen', {
+    }, printerId),
+    printKitchen: (storeId: number, order: Order, storeName = 'StallEasy POS', includeSkipped = false, printerId?: string) => hardwareApi.run(storeId, 'print_kitchen', {
         order_no: String(order.order_no),
         store_name: storeName,
         created_at: formatDateTime(order.created_at, order.timezone),
         total: order.total_amount,
-        lines: order.items.map(item => ({
+        lines: order.items.filter(item => includeSkipped || !item.skip_printing).map(item => ({
             name: item.name_snapshot,
             quantity: Number(item.quantity),
             amount: Number(item.price_snapshot) * Number(item.quantity),
             unit_price: Number(item.price_snapshot),
-            options: (item.options || []).map((option: any) => option.option_name),
+            options: (item.options || []).map((option: any) => formatPrintedOption({ ...option, price_adjustment: 0 })),
             note: item.note || undefined,
         })),
-    }),
-    printLabels: (storeId: number, order: Order, storeName = 'StallEasy POS') => hardwareApi.run(storeId, 'print_label', {
+    }, printerId),
+    printLabels: (storeId: number, order: Order, storeName = 'StallEasy POS', includeSkipped = false, printerId?: string) => hardwareApi.run(storeId, 'print_label', {
         order_no: String(order.order_no),
         store_name: storeName,
         created_at: formatDateTime(order.created_at, order.timezone),
         order_type: order.order_type,
         total: order.total_amount,
-        lines: order.items.map(item => ({
+        lines: order.items.filter(item => includeSkipped || !item.skip_printing).map(item => ({
             name: item.name_snapshot,
             quantity: Number(item.quantity),
             amount: Number(item.price_snapshot) * Number(item.quantity),
             unit_price: Number(item.price_snapshot),
-            options: (item.options || []).map((option: any) => option.option_name),
+            options: (item.options || []).map((option: any) => formatPrintedOption({ ...option, price_adjustment: 0 })),
             note: item.note || undefined,
         })),
-    }),
+    }, printerId),
     printHeldOrder: (storeId: number, order: HeldOrder, action: HeldOrderPrintAction, storeName = 'StallEasy POS', printerId?: string, timeZone = 'Asia/Taipei') => {
-        const lines = order.items.map(item => ({
+        const lines = order.items.filter(item => !item.skipPrinting).map(item => ({
             name: item.name,
             quantity: Number(item.quantity),
             amount: Number(item.price) * Number(item.quantity),
             unit_price: Number(item.price),
-            options: item.selectedOptions.map(option =>
-                action === 'print_receipt' && Number(option.priceAdjustment || 0) > 0
-                    ? `${option.optionName} (+$${Number(option.priceAdjustment)})`
-                    : option.optionName
-            ),
+            options: item.selectedOptions.map(option => {
+                const icon = optionOperationIcon(option.operationType);
+                const price = action === 'print_receipt' ? Number(option.priceAdjustment || 0) : 0;
+                return `${icon ? `${icon} ` : ''}${option.optionName}${price > 0 ? ` (+$${price})` : ''}`;
+            }),
             note: item.note || undefined,
         }));
         return hardwareApi.run(storeId, action, {

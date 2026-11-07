@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Plus } from 'lucide-react';
 import { ProductAttribute, ProductAttributeOption } from '@/lib/api/products';
-import { Material } from '@/lib/api/materials';
+import { Material, MaterialGroup } from '@/lib/api/materials';
 import {
     DndContext,
     closestCenter,
@@ -25,11 +25,12 @@ interface AttributeManagerProps {
     attributes: ProductAttribute[];
     onChange: (attributes: ProductAttribute[]) => void;
     materials: Material[];
+    materialGroups?: MaterialGroup[];
     currentProductId?: number;
     storeId?: number;
 }
 
-export default function AttributeManager({ attributes, onChange, materials, currentProductId, storeId }: AttributeManagerProps) {
+export default function AttributeManager({ attributes, onChange, materials, materialGroups = [], currentProductId, storeId }: AttributeManagerProps) {
     const [expandedGroups, setExpandedGroups] = useState<number[]>([]);
 
     // 設定拖曳感測器
@@ -246,6 +247,7 @@ export default function AttributeManager({ attributes, onChange, materials, curr
                                                     updateOption={updateOption}
                                                     removeOption={removeOption}
                                                     materials={materials}
+                                                    materialGroups={materialGroups}
                                                 />
                                             ))}
                                         </div>

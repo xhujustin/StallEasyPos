@@ -20,6 +20,8 @@ export interface Shift {
     cash_sales: number;
     total_net_profit: number;
     order_count: number;
+    total_expenses: number;
+    cash_expenses: number;
     opened_by_id: number;
     closed_by_id?: number;
     status: ShiftStatus;
@@ -32,6 +34,19 @@ export interface Shift {
         id: number;
         username: string;
     };
+}
+
+export interface ShiftExpense {
+    id: number;
+    shift_id: number;
+    user_id: number;
+    category: string;
+    amount: number;
+    payment_method: 'cash' | 'transfer' | 'card';
+    description?: string | null;
+    supplier?: string | null;
+    is_voided: boolean;
+    created_at: string;
 }
 
 export interface ShiftCreate {
@@ -69,6 +84,20 @@ export const shiftApi = {
         return response.data.data;
     },
 
+    getExpenses: async (shiftId: number) => {
+        const response = await apiClient.get<ResponseBase<ShiftExpense[]>>(`/shifts/${shiftId}/expenses`);
+        return response.data.data;
+    },
+
+    createExpense: async (shiftId: number, data: { category: string; amount: number; payment_method: 'cash' | 'transfer' | 'card'; description?: string; supplier?: string }) => {
+        const response = await apiClient.post<ResponseBase<ShiftExpense>>(`/shifts/${shiftId}/expenses`, data);
+        return response.data.data;
+    },
+
+    voidExpense: async (shiftId: number, expenseId: number) => {
+        await apiClient.delete(`/shifts/${shiftId}/expenses/${expenseId}`);
+    },
+
     // 取得歷史班次
     history: async (storeId: number, skip: number = 0, limit: number = 20, startDate?: string, endDate?: string) => {
         const response = await apiClient.get<ResponseBase<Shift[]>>('/shifts/', {
@@ -88,8 +117,12 @@ export const shiftApi = {
         const response = await apiClient.get<ResponseBase<{
             order_count: number;
             total_sales: number;
+            total_cost: number;
             total_net_profit: number;
             cash_sales: number;
+            total_expenses: number;
+            cash_expenses: number;
+            net_operating_profit: number;
         }>>(`/shifts/${shiftId}/stats`);
         return response.data.data;
     }

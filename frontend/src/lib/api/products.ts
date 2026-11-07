@@ -5,12 +5,14 @@ export interface ProductMaterial {
     id: number;
     material_id: number;
     quantity: number;
+    display_order: number;
     material?: Material;
 }
 
 export interface ProductMaterialCreate {
     material_id: number;
     quantity: number;
+    display_order?: number;
 }
 
 export interface OptionMaterial {
@@ -51,6 +53,7 @@ export interface Product {
     category?: string;
     attributes?: ProductAttribute[];
     is_active: boolean;
+    skip_printing: boolean;
     image_url?: string;
     description?: string;
     created_at?: string;
@@ -64,6 +67,7 @@ export interface ProductCreate {
     category?: string;
     description?: string;
     is_active?: boolean;
+    skip_printing?: boolean;
     image_url?: string;
     materials?: ProductMaterialCreate[];
     attributes?: ProductAttribute[];
@@ -75,6 +79,7 @@ export interface ProductUpdate {
     category?: string;
     description?: string;
     is_active?: boolean;
+    skip_printing?: boolean;
     image_url?: string;
     materials?: ProductMaterialCreate[];
     attributes?: ProductAttribute[];

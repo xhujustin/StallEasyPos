@@ -19,6 +19,12 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 
 type ReprintOutput = 'receipt' | 'kitchen' | 'number_ticket' | 'label';
 
+interface ReprintPrinter {
+    id: string;
+    name: string;
+    outputs: string[];
+}
+
 const REPRINT_OPTIONS: { value: ReprintOutput; label: string }[] = [
     { value: 'receipt', label: '顧客收據' },
     { value: 'kitchen', label: '內場單' },
@@ -35,6 +41,8 @@ export default function OrdersPage() {
     const [isDetailOpen, setIsDetailOpen] = useState(false);
     const [reprintOrder, setReprintOrder] = useState<Order | null>(null);
     const [configuredOutputs, setConfiguredOutputs] = useState<ReprintOutput[]>([]);
+    const [reprintPrinters, setReprintPrinters] = useState<ReprintPrinter[]>([]);
+    const [selectedPrinterIds, setSelectedPrinterIds] = useState<string[]>([]);
     const [loadingReprintOptions, setLoadingReprintOptions] = useState(false);
     const [printingOutput, setPrintingOutput] = useState<ReprintOutput | null>(null);
 
@@ -98,15 +106,29 @@ export default function OrdersPage() {
         if (!storeId) return;
         setReprintOrder(order);
         setConfiguredOutputs([]);
+        setReprintPrinters([]);
+        setSelectedPrinterIds([]);
         setLoadingReprintOptions(true);
         try {
             const device = await settingsApi.getDeviceSettings(storeId);
             const printers = Array.isArray(device.printers)
                 ? device.printers.filter((printer: { enabled?: boolean }) => printer.enabled !== false)
                 : [];
+            const availablePrinters: ReprintPrinter[] = printers.map((printer: { id: string; name?: string; outputs?: string[] }) => ({
+                id: printer.id,
+                name: printer.name || '未命名印表機',
+                outputs: Array.isArray(printer.outputs) ? printer.outputs : [],
+            }));
+            setReprintPrinters(availablePrinters);
             const outputs = printers.flatMap((printer: { outputs?: string[] }) =>
                 Array.isArray(printer.outputs) ? printer.outputs : []
             );
+            const defaultPrinterIds = Array.from(new Set(
+                outputs
+                    .map(output => availablePrinters.find(printer => printer.outputs.includes(output))?.id)
+                    .filter((id): id is string => Boolean(id))
+            ));
+            setSelectedPrinterIds(defaultPrinterIds);
             const legacyOutputs: string[] = [];
             if (device.auto_print_receipt) legacyOutputs.push('receipt');
             if (device.print_number_ticket) legacyOutputs.push('number_ticket');
@@ -121,20 +143,33 @@ export default function OrdersPage() {
         }
     };
 
-    const handleReprint = async (output: ReprintOutput) => {
+    const handleReprint = async (output: ReprintOutput, printToAll = false) => {
         if (!storeId || !reprintOrder || printingOutput) return;
+        const compatiblePrinters = reprintPrinters.filter(printer => printer.outputs.includes(output));
+        const targetPrinterIds = compatiblePrinters.length === 1
+            ? [compatiblePrinters[0].id]
+            : compatiblePrinters.length > 1
+                ? compatiblePrinters
+                .filter(printer => printToAll || selectedPrinterIds.includes(printer.id))
+                .map(printer => printer.id)
+                : [];
+        if (compatiblePrinters.length > 1 && targetPrinterIds.length === 0) {
+            toast.error('請至少選擇一台印表機');
+            return;
+        }
         setPrintingOutput(output);
         try {
             const storeName = user?.stores?.find(store => store.id === storeId)?.name || 'StallEasy POS';
-            const queued = output === 'receipt'
-                ? await hardwareApi.printOrder(storeId, reprintOrder, storeName)
+            const printerTargets: Array<string | undefined> = targetPrinterIds.length > 0 ? targetPrinterIds : [undefined];
+            const queuedJobs = await Promise.all(printerTargets.map(printerId => output === 'receipt'
+                ? hardwareApi.printOrder(storeId, reprintOrder, storeName, true, printerId)
                 : output === 'kitchen'
-                    ? await hardwareApi.printKitchen(storeId, reprintOrder, storeName)
+                    ? hardwareApi.printKitchen(storeId, reprintOrder, storeName, true, printerId)
                     : output === 'number_ticket'
-                        ? await hardwareApi.printNumberTicket(storeId, reprintOrder, storeName)
-                        : await hardwareApi.printLabels(storeId, reprintOrder, storeName);
-            await hardwareApi.waitForJob(queued.data);
-            toast.success(`${REPRINT_OPTIONS.find((option) => option.value === output)?.label}補印完成`);
+                        ? hardwareApi.printNumberTicket(storeId, reprintOrder, storeName, printerId)
+                        : hardwareApi.printLabels(storeId, reprintOrder, storeName, true, printerId)));
+            await Promise.all(queuedJobs.map(queued => hardwareApi.waitForJob(queued.data)));
+            toast.success(`${REPRINT_OPTIONS.find((option) => option.value === output)?.label}已送至 ${printerTargets.length} 台印表機`);
             setReprintOrder(null);
         } catch (error) {
             console.error('Reprint failed:', error);
@@ -348,7 +383,7 @@ export default function OrdersPage() {
                 <DialogContent className="sm:max-w-md">
                     <DialogHeader>
                         <DialogTitle>補印訂單 #{reprintOrder?.order_no}</DialogTitle>
-                        <DialogDescription>選擇要補印的內容；只有印表機已設定的輸出類型可以使用。</DialogDescription>
+                        <DialogDescription>選擇要補印的內容與發送設備；多台設備可複選或一鍵全部列印。</DialogDescription>
                     </DialogHeader>
                     {loadingReprintOptions ? (
                         <div className="flex items-center justify-center gap-2 py-8 text-sm text-slate-500">
@@ -359,23 +394,68 @@ export default function OrdersPage() {
                             尚未設定可補印的輸出內容，請先到 POS 設定指派印表機。
                         </div>
                     ) : (
-                        <div className="grid grid-cols-2 gap-3">
-                            {REPRINT_OPTIONS.map((option) => {
-                                const enabled = configuredOutputs.includes(option.value);
-                                return (
-                                    <Button
-                                        key={option.value}
-                                        type="button"
-                                        variant="outline"
-                                        disabled={!enabled || printingOutput !== null}
-                                        onClick={() => void handleReprint(option.value)}
-                                        className="h-12"
-                                    >
-                                        {printingOutput === option.value ? <Loader2 className="animate-spin" /> : <Printer />}
-                                        {option.label}
-                                    </Button>
-                                );
-                            })}
+                        <div className="space-y-4">
+                            {configuredOutputs.some(output => reprintPrinters.filter(printer => printer.outputs.includes(output)).length > 1) && (
+                                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                                    <div className="mb-2 flex items-center justify-between gap-3">
+                                        <span className="text-sm font-bold text-slate-700">發送至印表機</span>
+                                        <button
+                                            type="button"
+                                            className="text-xs font-bold text-blue-600 hover:text-blue-800"
+                                            onClick={() => setSelectedPrinterIds(reprintPrinters.map(printer => printer.id))}
+                                        >
+                                            全選
+                                        </button>
+                                    </div>
+                                    <div className="space-y-2">
+                                        {reprintPrinters.map(printer => (
+                                            <label key={printer.id} className="flex cursor-pointer items-center gap-2 rounded-lg bg-white px-3 py-2 text-sm text-slate-700">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={selectedPrinterIds.includes(printer.id)}
+                                                    onChange={() => setSelectedPrinterIds(current => current.includes(printer.id)
+                                                        ? current.filter(id => id !== printer.id)
+                                                        : [...current, printer.id])}
+                                                    disabled={printingOutput !== null}
+                                                />
+                                                <Printer className="h-4 w-4 text-slate-400" />
+                                                {printer.name}
+                                            </label>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="grid grid-cols-2 gap-3">
+                                {REPRINT_OPTIONS.map((option) => {
+                                    const enabled = configuredOutputs.includes(option.value);
+                                    const compatibleCount = reprintPrinters.filter(printer => printer.outputs.includes(option.value)).length;
+                                    return (
+                                        <div key={option.value} className="space-y-1.5">
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                disabled={!enabled || printingOutput !== null}
+                                                onClick={() => void handleReprint(option.value)}
+                                                className="h-12 w-full"
+                                            >
+                                                {printingOutput === option.value ? <Loader2 className="animate-spin" /> : <Printer />}
+                                                {option.label}
+                                            </Button>
+                                            {compatibleCount > 1 && (
+                                                <button
+                                                    type="button"
+                                                    disabled={printingOutput !== null}
+                                                    onClick={() => void handleReprint(option.value, true)}
+                                                    className="w-full rounded-md py-1 text-xs font-bold text-blue-600 hover:bg-blue-50 disabled:text-slate-300"
+                                                >
+                                                    全部列印（{compatibleCount} 台）
+                                                </button>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
                         </div>
                     )}
                 </DialogContent>

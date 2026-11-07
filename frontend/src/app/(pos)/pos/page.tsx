@@ -74,6 +74,7 @@ export default function POSPage() {
 
     const printHeldOutputs = async (heldOrder: HeldOrder, onlyAction?: HeldOrderPrintAction, outputMode: 'hold' | 'scheduled' = 'hold') => {
         if (!storeId) return [];
+        if (!heldOrder.items.some(item => !item.skipPrinting)) return [];
         const [device, profile] = await Promise.all([
             settingsApi.getDeviceSettings(storeId),
             settingsApi.getStoreProfile(storeId),
@@ -297,7 +298,8 @@ export default function POSPage() {
                 id: product.id,
                 name: product.name,
                 price: product.price,
-                image_url: product.image_url
+                image_url: product.image_url,
+                skip_printing: product.skip_printing,
             }, 1);
         }
     };
@@ -314,7 +316,8 @@ export default function POSPage() {
                 id: selectedProduct.id,
                 name: selectedProduct.name,
                 price: selectedProduct.price,
-                image_url: selectedProduct.image_url
+                image_url: selectedProduct.image_url,
+                skip_printing: selectedProduct.skip_printing,
             }, quantity, options, note);
         }
     };

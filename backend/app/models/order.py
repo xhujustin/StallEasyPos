@@ -116,6 +116,7 @@ class OrderItem(Base):
     note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     packaging_used: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     options: Mapped[Optional[List[dict]]] = mapped_column(JSONB, nullable=True)
+    skip_printing: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 

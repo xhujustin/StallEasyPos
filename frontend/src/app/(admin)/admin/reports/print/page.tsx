@@ -182,8 +182,9 @@ const calculateAnalytics = (
                     0
                 );
             }, 0);
+            const hasSavedUnitCost = item.cost_snapshot !== null && item.cost_snapshot !== undefined;
             const savedUnitCost = Number(item.cost_snapshot || 0);
-            const unitCost = savedUnitCost > 0
+            const unitCost = hasSavedUnitCost
                 ? savedUnitCost
                 : Number(product?.cost ?? recipeUnitCost) + optionUnitCost;
             const itemCost = unitCost * Number(item.quantity || 0);
@@ -219,8 +220,10 @@ const calculateAnalytics = (
     const cashSales = shifts.reduce((sum, s) => sum + (s.cash_sales || 0), 0);
     const cashAdded = shifts.reduce((sum, s) => sum + (s.cash_added || 0), 0);
     const cashRemoved = shifts.reduce((sum, s) => sum + (s.cash_removed || 0), 0);
+    const cashExpenses = shifts.reduce((sum, s) => sum + (s.cash_expenses || 0), 0);
+    const operatingExpenses = shifts.reduce((sum, s) => sum + (s.total_expenses || 0), 0);
     const actual = shifts.reduce((sum, s) => sum + (s.final_cash || 0), 0);
-    const expected = opening + cashSales + cashAdded - cashRemoved;
+    const expected = opening + cashSales + cashAdded - cashRemoved - cashExpenses;
     const orderDates = validOrders.map((order) => order.created_at).sort();
     const fixedCosts = calculateAllocatedFixedCosts(
         requestedStartDate || orderDates[0] || null,
@@ -228,7 +231,7 @@ const calculateAnalytics = (
         fixedCostSettings,
     );
     const grossProfit = revenueExcludingTax - totalCogs;
-    const netProfit = grossProfit - fixedCosts;
+    const netProfit = grossProfit - fixedCosts - operatingExpenses;
 
     return {
         revenue: {
@@ -280,7 +283,7 @@ const calculateAnalytics = (
         cashRec: {
             opening,
             sales: cashSales,
-            netChange: cashAdded - cashRemoved,
+            netChange: cashAdded - cashRemoved - cashExpenses,
             expected,
             actual,
             shortage: actual - expected

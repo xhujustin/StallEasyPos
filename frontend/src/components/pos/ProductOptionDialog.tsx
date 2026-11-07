@@ -109,12 +109,21 @@ export function ProductOptionDialog({
             selectedIds.forEach(optId => {
                 const opt = attr.options.find(o => o.id === optId);
                 if (opt) {
+                    const hasAddedMaterial = (opt.materials || []).some(material => Number(material.quantity) > 0);
+                    const hasRemovedMaterial = (opt.materials || []).some(material => Number(material.quantity) < 0);
                     cartOptions.push({
                         attributeId: attr.id!,
                         attributeName: attr.name,
                         optionId: opt.id!,
                         optionName: opt.name,
-                        priceAdjustment: Number(opt.price_adjustment)
+                        priceAdjustment: Number(opt.price_adjustment),
+                        operationType: hasAddedMaterial && hasRemovedMaterial
+                            ? 'replace'
+                            : hasRemovedMaterial
+                                ? 'remove'
+                                : hasAddedMaterial
+                                    ? 'add'
+                                    : 'none'
                     });
                 }
             });

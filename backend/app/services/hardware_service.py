@@ -23,7 +23,9 @@ class HardwareService:
             "ip": settings.get("printer_ip", ""),
             "port": int(settings.get("printer_port", 9100)),
             "usb_path": settings.get("printer_usb_path", "/dev/usb/lp0"),
+            "bluetooth_address": settings.get("printer_bluetooth_address", ""),
             "paper_width": settings.get("paper_width", "57mm"),
+            "command_mode": settings.get("printer_command_mode", "auto"),
             "encoding": settings.get("printer_encoding", "cp950"),
             "outputs": ["receipt", "number_ticket", "shift_report", "drawer"],
         }
@@ -59,10 +61,12 @@ class HardwareService:
             raise HTTPException(status_code=400, detail="沒有啟用可處理此輸出內容的印表機")
         for printer in printers:
             printer_type = printer.get("type", "network")
-            if printer_type not in {"network", "usb"}:
-                raise HTTPException(status_code=400, detail="印表機連線方式必須是 network 或 usb")
+            if printer_type not in {"network", "usb", "bluetooth"}:
+                raise HTTPException(status_code=400, detail="印表機連線方式必須是 network、usb 或 bluetooth")
             if printer_type == "network" and not printer.get("ip"):
                 raise HTTPException(status_code=400, detail=f"印表機「{printer.get('name', '')}」尚未設定 IP")
+            if printer_type == "bluetooth" and not printer.get("bluetooth_address"):
+                raise HTTPException(status_code=400, detail=f"印表機「{printer.get('name', '')}」尚未設定藍牙位址")
 
         receipt_payload = job.receipt.model_dump() if job.receipt else None
         if receipt_payload is not None:

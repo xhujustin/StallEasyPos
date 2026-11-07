@@ -12,7 +12,7 @@ from app.models.product_material import ProductMaterial
 from app.schemas.orders import OrderCreate
 from app.services.store_service import StoreService
 
-from app.models.product_attribute import ProductAttributeOption, OptionMaterial
+from app.models.product_attribute import ProductAttribute, ProductAttributeOption, OptionMaterial
 from app.services.material_service import MaterialService
 from app.services.shift_service import ShiftService
 from app.services.setting_service import SettingService
@@ -139,6 +139,12 @@ class OrderService:
                         for product_material in product.materials
                         if product_material.material is not None
                     )
+                # Deduct the base recipe as part of the same transaction as the order.
+                for product_material in product.materials:
+                    deduct_qty = -1 * (product_material.quantity * Decimal(str(item_in.quantity)))
+                    await MaterialService.apply_usage(
+                        db, product_material.material_id, store_id, deduct_qty
+                    )
             else:
                 # Handle custom item or deleted product logic (Simplified: Error if not found)
                 raise HTTPException(status_code=400, detail=f"Product {item_in.product_id} not found")
@@ -146,21 +152,31 @@ class OrderService:
             # Calculate line total with options and Deduct Inventory
             options_adjustment = 0.0
             options_data = None
+            removable_recipe_quantities = {
+                product_material.material_id: Decimal(str(product_material.quantity))
+                for product_material in product.materials
+            }
             
             if item_in.options:
                 options_data = []
                 for opt_in in item_in.options:
-                    # 記錄選項資料
-                    options_data.append(opt_in.model_dump())
-                    options_adjustment += float(opt_in.price_adjustment)
-
-                    # 5. Option Inventory Deduction (扣除選項耗材庫存)
+                    # 5. Option inventory adjustment.
+                    # Positive quantities add ingredients; negative quantities remove
+                    # ingredients from the base recipe. A replacement is represented by
+                    # one negative row for the original ingredient and one positive row
+                    # for its replacement. Cost and stock therefore use the same signed
+                    # adjustment and cancellation can reverse it exactly.
                     # 查詢選項並預加載耗材設定
                     # 注意: 這裡是在迴圈中查詢，若選項極多可能會影響效能 (N+1)，但在 POS 場景下通常選項不多。
                     # 優化方向: 可先收集所有 option_id 一次查詢。
                     opt_result = await db.execute(
                         select(ProductAttributeOption)
+                        .join(
+                            ProductAttribute,
+                            ProductAttribute.id == ProductAttributeOption.attribute_id,
+                        )
                         .where(ProductAttributeOption.id == opt_in.option_id)
+                        .where(ProductAttribute.product_id == product.id)
                         .options(
                             selectinload(ProductAttributeOption.materials)
                             .selectinload(OptionMaterial.material)
@@ -168,18 +184,75 @@ class OrderService:
                     )
                     db_option = opt_result.scalars().first()
 
-                    if db_option and db_option.materials:
+                    if db_option is None or not db_option.is_active:
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"Option {opt_in.option_id} is not available for product {product.id}",
+                        )
+
+                    # Never trust the client-provided name or price. Snapshot the
+                    # server-side option and its signed material adjustments so a
+                    # later option edit cannot corrupt cancellation/restocking.
+                    options_adjustment += float(db_option.price_adjustment)
+                    has_added_material = any(material.quantity > 0 for material in db_option.materials)
+                    has_removed_material = any(material.quantity < 0 for material in db_option.materials)
+                    operation_type = (
+                        "replace" if has_added_material and has_removed_material
+                        else "remove" if has_removed_material
+                        else "add" if has_added_material
+                        else "none"
+                    )
+                    option_snapshot = {
+                        "attribute_id": db_option.attribute_id,
+                        "attribute_name": opt_in.attribute_name,
+                        "option_id": db_option.id,
+                        "option_name": db_option.name,
+                        "price_adjustment": float(db_option.price_adjustment),
+                        "operation_type": operation_type,
+                        "materials": [
+                            {
+                                "material_id": option_material.material_id,
+                                "quantity": float(option_material.quantity),
+                            }
+                            for option_material in db_option.materials
+                        ],
+                    }
+                    options_data.append(option_snapshot)
+
+                    if db_option.materials:
                         for opt_mat in db_option.materials:
+                            if opt_mat.quantity < 0:
+                                remaining_quantity = removable_recipe_quantities.get(
+                                    opt_mat.material_id, Decimal("0")
+                                )
+                                removed_quantity = abs(opt_mat.quantity)
+                                if removed_quantity > remaining_quantity:
+                                    material_name = (
+                                        opt_mat.material.name
+                                        if opt_mat.material is not None
+                                        else str(opt_mat.material_id)
+                                    )
+                                    raise HTTPException(
+                                        status_code=400,
+                                        detail=(
+                                            f"Option '{db_option.name}' removes {removed_quantity} "
+                                            f"of material '{material_name}', but only "
+                                            f"{remaining_quantity} exists in the base recipe"
+                                        ),
+                                    )
+                                removable_recipe_quantities[opt_mat.material_id] = (
+                                    remaining_quantity - removed_quantity
+                                )
                             if opt_mat.material is not None:
                                 cost_snapshot += float(opt_mat.quantity) * float(opt_mat.material.unit_cost)
-                            # 扣除數量 = 訂單數量 * 耗材設定數量
-                            # 例如: 2 杯珍奶 * 每杯 50g 珍珠 = 扣除 100g
-                            # 注意: opt_mat.quantity 是 Decimal, item_in.quantity 是 int/float, 需轉換
+                            # A negative option quantity produces a positive usage change,
+                            # offsetting the base recipe deduction for a removed ingredient.
                             deduct_qty = -1 * (opt_mat.quantity * Decimal(str(item_in.quantity)))
-                            await MaterialService.update_stock(
+                            await MaterialService.apply_usage(
                                 db, opt_mat.material_id, store_id, deduct_qty
                             )
 
+            cost_snapshot = max(0.0, cost_snapshot)
             final_unit_price = price_snapshot + options_adjustment
             line_total = final_unit_price * item_in.quantity
             calculated_total += line_total
@@ -191,7 +264,8 @@ class OrderService:
                 cost_snapshot=cost_snapshot,
                 quantity=item_in.quantity,
                 note=item_in.note,
-                options=options_data
+                options=options_data,
+                skip_printing=product.skip_printing,
             )
             order_items.append(db_item)
 
@@ -368,13 +442,58 @@ class OrderService:
         if order.status == OrderStatus.CANCELLED and status != OrderStatus.CANCELLED:
              raise HTTPException(status_code=400, detail="Cannot change status of cancelled order")
 
+        if order.status == status:
+            return order
+
+        # Return all recipe ingredients when a paid order is cancelled. Both
+        # the order state and stock ledger are committed in one transaction.
+        if status == OrderStatus.CANCELLED:
+            for item in order.items:
+                recipe_result = await db.execute(
+                    select(ProductMaterial).where(ProductMaterial.product_id == item.product_id)
+                )
+                for recipe in recipe_result.scalars().all():
+                    restore_qty = recipe.quantity * Decimal(str(item.quantity))
+                    await MaterialService.apply_usage(
+                        db, recipe.material_id, store_id, restore_qty,
+                        transaction_type="RESTOCK",
+                        note=f"取消訂單 #{order.order_no} 還原配方庫存",
+                    )
+
+                for option_data in item.options or []:
+                    option_id = option_data.get("option_id") if isinstance(option_data, dict) else None
+                    if not option_id:
+                        continue
+                    material_snapshots = option_data.get("materials") or []
+                    if material_snapshots:
+                        for material_snapshot in material_snapshots:
+                            restore_qty = Decimal(str(material_snapshot["quantity"])) * Decimal(str(item.quantity))
+                            await MaterialService.apply_usage(
+                                db, int(material_snapshot["material_id"]), store_id, restore_qty,
+                                transaction_type="RESTOCK",
+                                note=f"取消訂單 #{order.order_no} 還原選項庫存",
+                            )
+                        continue
+
+                    # Backward compatibility for orders created before material
+                    # adjustments were snapshotted on the order item.
+                    option_result = await db.execute(
+                        select(OptionMaterial).where(OptionMaterial.option_id == option_id)
+                    )
+                    for option_material in option_result.scalars().all():
+                        restore_qty = option_material.quantity * Decimal(str(item.quantity))
+                        await MaterialService.apply_usage(
+                            db, option_material.material_id, store_id, restore_qty,
+                            transaction_type="RESTOCK",
+                            note=f"取消訂單 #{order.order_no} 還原選項庫存",
+                        )
+
         order.status = status
         
         # 若是作廢/取消，記錄時間 (此處範例，可擴充 void_reason 等)
         if status in [OrderStatus.CANCELLED, OrderStatus.DRAFT]: # DRAFT as voided? or add VOID status
             order.is_voided = True
             order.voided_at = datetime.now()
-            # Note: Inventory restoration is NOT implemented here yet as per plan.
 
         await db.commit()
         await db.refresh(order)

@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { Check, Copy, Loader2, Search } from 'lucide-react';
 import { Product, ProductMaterial, ProductMaterialCreate, productApi } from '@/lib/api/products';
+import { Category, categoryApi } from '@/lib/api/categories';
 import { Button } from '@/components/ui/button';
 import {
     Dialog,
@@ -20,16 +21,19 @@ interface CopyRecipeDialogProps {
 }
 
 export const createRecipePayload = (materials: ProductMaterial[]): ProductMaterialCreate[] =>
-    materials.map((material) => ({
+    materials.map((material, index) => ({
         material_id: material.material_id,
         quantity: material.quantity,
+        display_order: material.display_order || index + 1,
     }));
 
 export default function CopyRecipeDialog({ materials, currentProductId, storeId }: CopyRecipeDialogProps) {
     const [open, setOpen] = useState(false);
     const [products, setProducts] = useState<Product[]>([]);
+    const [categories, setCategories] = useState<Category[]>([]);
     const [selectedIds, setSelectedIds] = useState<number[]>([]);
     const [searchQuery, setSearchQuery] = useState('');
+    const [selectedCategory, setSelectedCategory] = useState('all');
     const [loading, setLoading] = useState(false);
     const [copying, setCopying] = useState(false);
     const [message, setMessage] = useState('');
@@ -41,13 +45,24 @@ export default function CopyRecipeDialog({ materials, currentProductId, storeId 
     );
     const filteredProducts = useMemo(() => {
         const query = searchQuery.trim().toLowerCase();
-        return query
-            ? availableProducts.filter((product) =>
-                product.name.toLowerCase().includes(query) ||
-                (product.category || '').toLowerCase().includes(query)
-            )
-            : availableProducts;
-    }, [availableProducts, searchQuery]);
+        return availableProducts.filter((product) => {
+            const categoryName = product.category || '未分類';
+            const matchesCategory = selectedCategory === 'all' || categoryName === selectedCategory;
+            const matchesQuery = !query || product.name.toLowerCase().includes(query) || categoryName.toLowerCase().includes(query);
+            return matchesCategory && matchesQuery;
+        });
+    }, [availableProducts, searchQuery, selectedCategory]);
+    const groupedProducts = useMemo(() => {
+        const configuredNames = categories.map((category) => category.name);
+        const additionalNames = filteredProducts
+            .map((product) => product.category)
+            .filter((name): name is string => Boolean(name) && !configuredNames.includes(name as string));
+        const categoryNames = Array.from(new Set([...configuredNames, ...additionalNames, '未分類']));
+        return categoryNames.map((name) => ({
+            name,
+            products: filteredProducts.filter((product) => (product.category || '未分類') === name),
+        })).filter((group) => group.products.length > 0);
+    }, [categories, filteredProducts]);
 
     const handleOpenChange = async (nextOpen: boolean) => {
         if (copying) return;
@@ -56,10 +71,16 @@ export default function CopyRecipeDialog({ materials, currentProductId, storeId 
 
         setSelectedIds([]);
         setSearchQuery('');
+        setSelectedCategory('all');
         setMessage('');
         setLoading(true);
         try {
-            setProducts(await productApi.getAll(storeId));
+            const [productsData, categoriesData] = await Promise.all([
+                productApi.getAll(storeId),
+                categoryApi.getCategories(storeId),
+            ]);
+            setProducts(productsData);
+            setCategories(categoriesData);
         } catch (error) {
             console.error('載入商品列表失敗:', error);
             setIsError(true);
@@ -136,15 +157,22 @@ export default function CopyRecipeDialog({ materials, currentProductId, storeId 
                     </DialogHeader>
 
                     <div className="space-y-3">
-                        <div className="relative">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-                            <input
-                                type="search"
-                                value={searchQuery}
-                                onChange={(event) => setSearchQuery(event.target.value)}
-                                placeholder="搜尋商品名稱或分類"
-                                className="w-full rounded-lg border border-gray-200 py-2 pl-9 pr-3 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                            />
+                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_180px]">
+                            <div className="relative">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                                <input
+                                    type="search"
+                                    value={searchQuery}
+                                    onChange={(event) => setSearchQuery(event.target.value)}
+                                    placeholder="搜尋商品名稱或分類"
+                                    className="w-full rounded-lg border border-gray-200 py-2 pl-9 pr-3 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                                />
+                            </div>
+                            <select value={selectedCategory} onChange={(event) => setSelectedCategory(event.target.value)} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100">
+                                <option value="all">所有分類</option>
+                                {categories.map((category) => <option key={category.id} value={category.name}>{category.name}</option>)}
+                                {!categories.some((category) => category.name === '未分類') && <option value="未分類">未分類</option>}
+                            </select>
                         </div>
                         <div className="flex items-center justify-between text-xs text-gray-500">
                             <span>已選擇 {selectedIds.length} 個商品</span>
@@ -157,22 +185,18 @@ export default function CopyRecipeDialog({ materials, currentProductId, storeId 
                                 <div className="flex items-center justify-center gap-2 py-12 text-sm text-gray-500"><Loader2 className="animate-spin" />載入商品中...</div>
                             ) : filteredProducts.length === 0 ? (
                                 <div className="py-12 text-center text-sm text-gray-400">沒有符合的其他商品</div>
-                            ) : filteredProducts.map((product) => {
-                                const selected = selectedIds.includes(product.id);
-                                return (
-                                    <label key={product.id} className="flex cursor-pointer items-center gap-3 border-b border-gray-100 px-4 py-3 last:border-0 hover:bg-gray-50">
-                                        <span className={`flex h-5 w-5 items-center justify-center rounded border ${selected ? 'border-blue-600 bg-blue-600 text-white' : 'border-gray-300'}`}>
-                                            {selected && <Check size={14} />}
-                                        </span>
+                            ) : groupedProducts.map((group) => <div key={group.name}>
+                                <div className="sticky top-0 z-10 border-b border-gray-200 bg-gray-50 px-4 py-2 text-xs font-bold text-gray-500">{group.name}（{group.products.length}）</div>
+                                {group.products.map((product) => {
+                                    const selected = selectedIds.includes(product.id);
+                                    return <label key={product.id} className="flex cursor-pointer items-center gap-3 border-b border-gray-100 px-4 py-3 last:border-0 hover:bg-gray-50">
+                                        <span className={`flex h-5 w-5 items-center justify-center rounded border ${selected ? 'border-blue-600 bg-blue-600 text-white' : 'border-gray-300'}`}>{selected && <Check size={14} />}</span>
                                         <input type="checkbox" checked={selected} onChange={() => toggleProduct(product.id)} className="sr-only" />
-                                        <span className="min-w-0 flex-1">
-                                            <span className="block truncate text-sm font-medium text-gray-800">{product.name}</span>
-                                            <span className="block text-xs text-gray-400">{product.category || '未分類'} · ID #{product.id}</span>
-                                        </span>
+                                        <span className="min-w-0 flex-1 truncate text-sm font-medium text-gray-800">{product.name}</span>
                                         {(product.materials?.length || 0) > 0 && <span className="text-xs text-amber-600">已有 {product.materials?.length} 項配方</span>}
-                                    </label>
-                                );
-                            })}
+                                    </label>;
+                                })}
+                            </div>)}
                         </div>
                         {message && <p className={`text-sm ${isError ? 'text-red-600' : 'text-green-600'}`}>{message}</p>}
                     </div>

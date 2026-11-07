@@ -15,6 +15,9 @@ from app.models.user import User, StoreUser
 from app.models.store import Store
 from app.models.product import Product
 from app.models.material import Material
+from app.models.material_inventory import MaterialInventoryItem, MaterialPurchase, MaterialInventoryTransaction
+from app.models.material_composition import MaterialComposition
+from app.models.material_group import MaterialGroup
 from app.models.product_material import ProductMaterial
 from app.models.category import Category
 from app.models.product_attribute import ProductAttribute, ProductAttributeOption, OptionMaterial
@@ -24,7 +27,7 @@ from app.models.invoice import InvoiceRecord
 from app.models.closing import DailyClosing
 from app.models.adjustment import Adjustment
 from app.models.audit import AuditLog
-from app.models.shift import Shift
+from app.models.shift import Shift, ShiftExpense
 from app.models.system_setting import SystemSetting
 
 # this is the Alembic Config object, which provides

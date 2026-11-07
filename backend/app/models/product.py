@@ -17,13 +17,14 @@ class Product(Base):
     attributes: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
     image_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+    skip_printing: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     display_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
     # Relationships
-    materials: Mapped[list["ProductMaterial"]] = relationship("ProductMaterial", back_populates="product", cascade="all, delete-orphan")
+    materials: Mapped[list["ProductMaterial"]] = relationship("ProductMaterial", back_populates="product", cascade="all, delete-orphan", order_by="ProductMaterial.display_order")
     attributes: Mapped[list["ProductAttribute"]] = relationship("ProductAttribute", backref="product", cascade="all, delete-orphan", order_by="ProductAttribute.display_order")
 
     __table_args__ = (

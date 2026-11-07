@@ -54,12 +54,24 @@ interface PrinterConfig {
     id: string;
     name: string;
     enabled: boolean;
-    type: 'network' | 'usb';
+    type: 'network' | 'usb' | 'bluetooth';
     ip: string;
     port: number;
     usb_path: string;
+    bluetooth_address?: string;
     paper_width: string;
+    command_mode?: 'auto' | 'tspl' | 'escpos';
     label_render_mode?: 'native' | 'hybrid' | 'raster';
+    usb_fallback_path?: string;
+    label_rotation?: 0 | 180;
+    label_offset_x_mm?: number;
+    label_gap_mm?: number;
+    label_print_speed?: number | 'Normal';
+    label_darkness?: number;
+    label_margin_mm?: number;
+    label_margin_y_mm?: number;
+    label_margin_top_mm?: number;
+    label_post_action?: 'None' | 'Normal' | 'TearOff';
     outputs: PrinterOutput[];
     hold_outputs?: PrinterOutput[];
     scheduled_outputs?: PrinterOutput[];
@@ -77,6 +89,30 @@ const OUTPUT_OPTIONS: { value: PrinterOutput; label: string }[] = [
 const HOLD_OUTPUT_OPTIONS = OUTPUT_OPTIONS.filter(option =>
     ['receipt', 'kitchen', 'label', 'number_ticket'].includes(option.value)
 );
+
+const LABEL_DIMENSIONS_MM = Array.from({ length: 13 }, (_, index) => 20 + index * 5);
+const LABEL_PAPER_SIZES = LABEL_DIMENSIONS_MM.flatMap(width =>
+    LABEL_DIMENSIONS_MM.map(height => ({
+        value: `${width}x${height}mm`,
+        label: `${width} × ${height} mm`,
+    }))
+);
+
+function PaperSizeOptions() {
+    return (
+        <>
+            <optgroup label="出單紙">
+                <option value="57mm">56／57 mm</option>
+                <option value="80mm">80 mm</option>
+            </optgroup>
+            <optgroup label="貼紙">
+                {LABEL_PAPER_SIZES.map(size => (
+                    <option key={size.value} value={size.value}>{size.label}</option>
+                ))}
+            </optgroup>
+        </>
+    );
+}
 
 export default function POSSettingsPage() {
     const { selectedStoreId, updateUser } = useAuthStore();
@@ -185,7 +221,9 @@ export default function POSSettingsPage() {
             ip: '',
             port: 9100,
             usb_path: '/dev/usb/lp0',
+            bluetooth_address: '',
             paper_width: '57mm',
+            command_mode: 'auto',
             label_render_mode: 'native',
             outputs: deviceSettings.printers.length === 0 ? ['receipt'] : [],
             hold_outputs: [],
@@ -232,8 +270,29 @@ export default function POSSettingsPage() {
         if (!device) return;
         if (device.type === 'network') {
             updatePrinter(printerId, { type: 'network', ip: device.value });
+        } else if (device.type === 'bluetooth') {
+            updatePrinter(printerId, { type: 'bluetooth', bluetooth_address: device.value });
         } else {
-            updatePrinter(printerId, { type: 'usb', usb_path: device.value });
+            if (device.value.startsWith('cups:')) {
+                updatePrinter(printerId, {
+                    type: 'usb',
+                    usb_path: device.value,
+                    usb_fallback_path: '/dev/usb/lp0',
+                    command_mode: 'tspl',
+                    label_render_mode: 'raster',
+                    label_rotation: 180,
+                    label_offset_x_mm: 1.5,
+                    label_gap_mm: 3,
+                    label_print_speed: 'Normal',
+                    label_darkness: 5,
+                    label_margin_mm: 0.5,
+                    label_margin_y_mm: 1,
+                    label_margin_top_mm: 0,
+                    label_post_action: 'TearOff',
+                });
+            } else {
+                updatePrinter(printerId, { type: 'usb', usb_path: device.value });
+            }
         }
     };
 
@@ -455,8 +514,7 @@ export default function POSSettingsPage() {
                                                 onChange={(e) => updateAndSave({ paper_width: e.target.value })}
                                                 className="w-full h-11 px-3 bg-slate-50 border border-slate-200 rounded-md text-sm font-bold focus:outline-none focus:ring-2 focus:ring-slate-400"
                                             >
-                                                <option value="80mm">80mm (標準)</option>
-                                                <option value="57mm">57mm (窄)</option>
+                                                <PaperSizeOptions />
                                             </select>
                                         </div>
                                     </div>
@@ -623,44 +681,64 @@ export default function POSSettingsPage() {
                                                 onChange={(e) => selectDeviceForPrinter(printer.id, e.target.value)}
                                                 className="h-10 w-full rounded-md border border-amber-200 bg-amber-50 px-3 text-sm font-bold"
                                             >
-                                                <option value="">從自動偵測列表選擇裝置</option>
-                                                {detectedPrinters.map(device => (
+                                                <option value="">
+                                                    {printer.type === 'usb'
+                                                        ? '選擇偵測到的 USB 裝置'
+                                                        : printer.type === 'bluetooth'
+                                                            ? '選擇已配對的藍牙裝置'
+                                                            : '選擇偵測到的 Wi-Fi／網路裝置'}
+                                                </option>
+                                                {detectedPrinters.filter(device => device.type === printer.type).map(device => (
                                                     <option key={`${printer.id}:${device.type}:${device.value}`} value={`${device.type}:${device.value}`}>
-                                                        {device.type === 'usb' ? 'USB' : 'Wi-Fi'}｜{device.label}
+                                                        {device.type === 'usb' ? 'USB' : device.type === 'bluetooth' ? '藍牙' : 'Wi-Fi'}｜{device.label}
                                                     </option>
                                                 ))}
                                             </select>
                                             <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
-                                                <select value={printer.type} onChange={(e) => updatePrinter(printer.id, { type: e.target.value as 'network' | 'usb' })} className="h-10 rounded-md border bg-white px-3 text-sm font-bold">
+                                                <select value={printer.type} onChange={(e) => updatePrinter(printer.id, { type: e.target.value as 'network' | 'usb' | 'bluetooth' })} className="h-10 rounded-md border bg-white px-3 text-sm font-bold">
                                                     <option value="usb">USB</option>
+                                                    <option value="bluetooth">藍牙</option>
                                                     <option value="network">Wi-Fi／網路</option>
                                                 </select>
                                                 <Input
-                                                    value={printer.type === 'usb' ? printer.usb_path : printer.ip}
-                                                    onChange={(e) => updatePrinter(printer.id, printer.type === 'usb' ? { usb_path: e.target.value } : { ip: e.target.value })}
-                                                    placeholder={printer.type === 'usb' ? '/dev/usb/lp0' : '192.168.1.100'}
+                                                    value={printer.type === 'usb' ? printer.usb_path : printer.type === 'bluetooth' ? (printer.bluetooth_address || '') : printer.ip}
+                                                    onChange={(e) => updatePrinter(printer.id, printer.type === 'usb' ? { usb_path: e.target.value } : printer.type === 'bluetooth' ? { bluetooth_address: e.target.value.toUpperCase() } : { ip: e.target.value })}
+                                                    placeholder={printer.type === 'usb' ? '/dev/usb/lp0' : printer.type === 'bluetooth' ? 'AA:BB:CC:DD:EE:FF' : '192.168.1.100'}
                                                     className="h-10 bg-white font-mono"
                                                 />
                                                 {printer.type === 'network' && (
                                                     <Input type="number" min={1} max={65535} value={printer.port} onChange={(e) => updatePrinter(printer.id, { port: Number(e.target.value) || 9100 })} className="h-10 bg-white font-mono" />
                                                 )}
                                                 <select value={printer.paper_width} onChange={(e) => updatePrinter(printer.id, { paper_width: e.target.value })} className="h-10 rounded-md border bg-white px-3 text-sm font-bold">
-                                                    <option value="57mm">57／58mm</option>
-                                                    <option value="80mm">80mm</option>
+                                                    <PaperSizeOptions />
                                                 </select>
                                             </div>
-                                            {(printer.outputs.includes('label') || (printer.hold_outputs || []).includes('label')) && (
-                                                <div className="grid grid-cols-1 gap-2 md:grid-cols-[160px_1fr] md:items-center">
-                                                    <Label className="text-xs font-bold text-slate-600">貼紙字體</Label>
-                                                    <select
-                                                        value={printer.label_render_mode || 'native'}
-                                                        onChange={(e) => updatePrinter(printer.id, { label_render_mode: e.target.value as 'native' | 'hybrid' | 'raster' })}
-                                                        className="h-10 rounded-md border bg-white px-3 text-sm font-bold"
-                                                    >
-                                                        <option value="native">印表機內建字庫（清晰）</option>
-                                                        <option value="hybrid">混合模式（中文圖片／數字符號內建）</option>
-                                                        <option value="raster">高解析圖片（相容性高）</option>
-                                                    </select>
+                                            {(printer.paper_width.includes('x') || printer.outputs.includes('label') || (printer.hold_outputs || []).includes('label')) && (
+                                                <div className="space-y-2">
+                                                    <div className="grid grid-cols-1 gap-2 md:grid-cols-[160px_1fr] md:items-center">
+                                                        <Label className="text-xs font-bold text-slate-600">指令模式</Label>
+                                                        <select
+                                                            value={printer.command_mode || 'auto'}
+                                                            onChange={(e) => updatePrinter(printer.id, { command_mode: e.target.value as 'auto' | 'tspl' | 'escpos' })}
+                                                            className="h-10 rounded-md border bg-white px-3 text-sm font-bold"
+                                                        >
+                                                            <option value="auto">自動（貼紙 TSPL／出單紙 ESC/POS）</option>
+                                                            <option value="tspl">TSPL</option>
+                                                            <option value="escpos">ESC/POS</option>
+                                                        </select>
+                                                    </div>
+                                                    <div className="grid grid-cols-1 gap-2 md:grid-cols-[160px_1fr] md:items-center">
+                                                        <Label className="text-xs font-bold text-slate-600">貼紙字體</Label>
+                                                        <select
+                                                            value={printer.label_render_mode || 'native'}
+                                                            onChange={(e) => updatePrinter(printer.id, { label_render_mode: e.target.value as 'native' | 'hybrid' | 'raster' })}
+                                                            className="h-10 rounded-md border bg-white px-3 text-sm font-bold"
+                                                        >
+                                                            <option value="native">印表機內建字庫（清晰）</option>
+                                                            <option value="hybrid">混合模式（中文圖片／數字符號內建）</option>
+                                                            <option value="raster">高解析圖片（相容性高）</option>
+                                                        </select>
+                                                    </div>
                                                 </div>
                                             )}
                                             <div>

@@ -60,9 +60,12 @@ class ShiftReportJob(BaseModel):
     non_cash_sales: float = 0
     total_cost: float = 0
     total_net_profit: float = 0
+    total_expenses: float = 0
+    net_operating_profit: float = 0
     initial_cash: float = 0
     cash_added: float = 0
     cash_removed: float = 0
+    cash_expenses: float = 0
     expected_cash: float = 0
     final_cash: float = 0
     shortage: float = 0

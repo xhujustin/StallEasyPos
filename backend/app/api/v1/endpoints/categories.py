@@ -2,10 +2,15 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
-from app.schemas.categories import CategoryCreate, CategoryUpdate, CategoryOut
+from app.schemas.categories import CategoryCreate, CategoryUpdate, CategoryOut, CategoryReorder
 from app.services.category_service import CategoryService
 
 router = APIRouter()
+
+@router.put("/reorder", status_code=status.HTTP_204_NO_CONTENT)
+async def reorder_categories(store_id: int, reorder_in: CategoryReorder, db: AsyncSession = Depends(get_db)):
+    if not await CategoryService.reorder_categories(db, store_id, reorder_in.category_ids):
+        raise HTTPException(status_code=422, detail="分類排序資料無效")
 
 @router.post("/", response_model=CategoryOut, status_code=status.HTTP_201_CREATED)
 async def create_category(

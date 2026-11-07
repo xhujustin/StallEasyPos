@@ -32,6 +32,8 @@ class Shift(Base):
     cash_sales: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False, default=0)
     total_net_profit: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False, default=0)
     order_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    total_expenses: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False, default=0, server_default="0")
+    cash_expenses: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False, default=0, server_default="0")
     
     opened_by_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"), nullable=False)
     closed_by_id: Mapped[Optional[int]] = mapped_column(BigInteger, ForeignKey("users.id"), nullable=True)
@@ -43,6 +45,7 @@ class Shift(Base):
     closed_by: Mapped[Optional["User"]] = relationship("User", foreign_keys=[closed_by_id])
     store: Mapped["Store"] = relationship("Store")
     transactions: Mapped[list["ShiftTransaction"]] = relationship("ShiftTransaction", back_populates="shift")
+    expenses: Mapped[list["ShiftExpense"]] = relationship("ShiftExpense", back_populates="shift")
 
     __table_args__ = (
         UniqueConstraint("store_id", "shift_number", name="uq_shifts_store_shift_number"),
@@ -62,4 +65,23 @@ class ShiftTransaction(Base):
     
     # Relationships
     shift: Mapped["Shift"] = relationship("Shift", back_populates="transactions")
+    user: Mapped["User"] = relationship("User")
+
+
+class ShiftExpense(Base):
+    __tablename__ = "shift_expenses"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, index=True)
+    shift_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("shifts.id"), nullable=False, index=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id"), nullable=False)
+    category: Mapped[str] = mapped_column(Text, nullable=False)
+    amount: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
+    payment_method: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    supplier: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    is_voided: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    voided_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    shift: Mapped["Shift"] = relationship("Shift", back_populates="expenses")
     user: Mapped["User"] = relationship("User")

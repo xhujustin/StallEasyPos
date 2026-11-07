@@ -11,7 +11,8 @@ class CategoryService:
         category = Category(
             store_id=store_id,
             name=category_in.name,
-            description=category_in.description
+            description=category_in.description,
+            display_order=category_in.display_order,
         )
         db.add(category)
         await db.commit()
@@ -24,7 +25,7 @@ class CategoryService:
         result = await db.execute(
             select(Category)
             .where(Category.store_id == store_id)
-            .order_by(Category.name)
+            .order_by(Category.display_order, Category.name)
         )
         return list(result.scalars().all())
 
@@ -65,5 +66,16 @@ class CategoryService:
             return False
 
         await db.delete(category)
+        await db.commit()
+        return True
+
+    @staticmethod
+    async def reorder_categories(db: AsyncSession, store_id: int, category_ids: List[int]) -> bool:
+        result = await db.execute(select(Category).where(Category.store_id == store_id, Category.id.in_(category_ids)))
+        categories = {category.id: category for category in result.scalars().all()}
+        if len(categories) != len(category_ids):
+            return False
+        for position, category_id in enumerate(category_ids, start=1):
+            categories[category_id].display_order = position
         await db.commit()
         return True

@@ -48,6 +48,7 @@ class OrderItemOut(BaseModel):
     quantity: float
     note: Optional[str]
     options: Optional[List[dict]] = None
+    skip_printing: bool = False
 
     model_config = ConfigDict(from_attributes=True)
 

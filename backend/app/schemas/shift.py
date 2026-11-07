@@ -19,6 +19,24 @@ class CashOperation(BaseModel):
     type: str # 'in' or 'out'
     reason: Optional[str] = None
 
+class ShiftExpenseCreate(BaseModel):
+    category: str
+    amount: float
+    payment_method: str
+    description: Optional[str] = None
+    supplier: Optional[str] = None
+
+class ShiftExpenseOut(ShiftExpenseCreate):
+    id: int
+    shift_id: int
+    user_id: int
+    is_voided: bool
+    voided_at: Optional[datetime] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
 class ShiftTransactionOut(BaseModel):
     id: int
     user_id: int
@@ -42,6 +60,8 @@ class ShiftOut(ShiftBase):
     cash_sales: float
     total_net_profit: float
     order_count: int
+    total_expenses: float = 0
+    cash_expenses: float = 0
     opened_by_id: int
     closed_by_id: Optional[int] = None
     

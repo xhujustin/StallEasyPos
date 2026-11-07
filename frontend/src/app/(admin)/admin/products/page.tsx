@@ -383,7 +383,6 @@ export default function ProductsPage() {
                                             </td>
                                             <td className="px-6 py-4 capitalize">
                                                 <div className="text-sm font-bold text-gray-900">{product.name}</div>
-                                                <div className="text-[10px] text-gray-400 font-mono mt-0.5">ID: #{product.id}</div>
                                             </td>
                                             <td className="px-6 py-4">
                                                 <span className="inline-flex items-center px-2 py-0.5 rounded bg-gray-100 text-gray-600 text-[11px] font-medium">

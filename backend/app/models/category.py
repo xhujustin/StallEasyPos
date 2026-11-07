@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional
-from sqlalchemy import BigInteger, Text, DateTime, func, ForeignKey, UniqueConstraint, Index, Identity
+from sqlalchemy import BigInteger, Integer, Text, DateTime, func, ForeignKey, UniqueConstraint, Index, Identity
 from sqlalchemy.orm import Mapped, mapped_column
 from app.models.base import Base
 
@@ -11,6 +11,7 @@ class Category(Base):
     store_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("stores.id", ondelete="CASCADE"), nullable=False)
     name: Mapped[str] = mapped_column(Text, nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    display_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)

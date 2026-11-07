@@ -7,6 +7,7 @@ export interface CartItemOption {
     optionId: number;
     optionName: string;
     priceAdjustment: number;
+    operationType?: 'add' | 'replace' | 'remove' | 'none';
 }
 
 export interface CartItem {
@@ -16,6 +17,7 @@ export interface CartItem {
     price: number; // Unit price (base + options)
     quantity: number;
     image_url?: string;
+    skipPrinting?: boolean;
     note?: string;
     selectedOptions: CartItemOption[];
 }
@@ -43,7 +45,7 @@ interface CartState {
     initializeOrderNumbers: (storeId: number, nextOrderNo: number, shiftId: number) => void;
     resetOrderNumbers: (storeId: number) => void;
     // addToCart now accepts more details
-    addToCart: (product: { id: number; name: string; price: number; image_url?: string }, quantity?: number, options?: CartItemOption[], note?: string) => void;
+    addToCart: (product: { id: number; name: string; price: number; image_url?: string; skip_printing?: boolean }, quantity?: number, options?: CartItemOption[], note?: string) => void;
     removeFromCart: (cartItemId: string) => void;
     updateQuantity: (cartItemId: string, quantity: number) => void;
     updateCartItem: (cartItemId: string, quantity: number, options: CartItemOption[], note: string, basePrice: number) => void;
@@ -144,6 +146,7 @@ export const useCartStore = create<CartState>()(
                         price: finalPrice,
                         quantity,
                         image_url: product.image_url,
+                        skipPrinting: product.skip_printing ?? false,
                         note,
                         selectedOptions: options
                     };

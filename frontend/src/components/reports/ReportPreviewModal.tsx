@@ -32,7 +32,7 @@ interface ReportContentProps {
 const AccountantReportContent = ({ shifts, dateRange }: ReportContentProps) => {
     // Calculate aggregate data
     const totalSales = shifts.reduce((sum, shift) => sum + (shift.total_sales || 0), 0);
-    const totalNetProfit = shifts.reduce((sum, shift) => sum + (shift.total_net_profit || 0), 0);
+    const totalNetProfit = shifts.reduce((sum, shift) => sum + (shift.total_net_profit || 0) - (shift.total_expenses || 0), 0);
     const totalOrderCount = shifts.reduce((sum, shift) => sum + (shift.order_count || 0), 0);
     // const totalCashOut = shifts.reduce((sum, shift) => sum + (shift.final_cash || 0), 0); // User requested to remove total final cash
     const totalShifts = shifts.length;
@@ -115,7 +115,7 @@ const AccountantReportContent = ({ shifts, dateRange }: ReportContentProps) => {
                 <div className="flex items-end justify-between h-32 gap-1 border-b border-gray-400 pb-1">
                     {shifts.map((shift) => {
                         const salesHeight = Math.max(((shift.total_sales || 0) / maxSales) * 100, 2);
-                        const profitHeight = Math.max(((shift.total_net_profit || 0) / maxSales) * 100, 0);
+                        const profitHeight = Math.max((((shift.total_net_profit || 0) - (shift.total_expenses || 0)) / maxSales) * 100, 0);
                         return (
                             <div key={shift.id} className="flex flex-col items-center flex-1 min-w-[10px]">
                                 <div className="relative w-full flex items-end justify-center h-full gap-[1px]">
@@ -148,7 +148,7 @@ const AccountantReportContent = ({ shifts, dateRange }: ReportContentProps) => {
                 </thead>
                 <tbody className="divide-y divide-gray-200">
                     {shifts.map((shift) => {
-                        const expected = (shift.initial_cash || 0) + (shift.cash_sales || 0) + (shift.cash_added || 0) - (shift.cash_removed || 0);
+                        const expected = (shift.initial_cash || 0) + (shift.cash_sales || 0) + (shift.cash_added || 0) - (shift.cash_removed || 0) - (shift.cash_expenses || 0);
                         const diff = (shift.final_cash || 0) - expected;
                         return (
                             <tr key={shift.id}>
@@ -158,7 +158,7 @@ const AccountantReportContent = ({ shifts, dateRange }: ReportContentProps) => {
                                 </td>
                                 <td className="py-1 text-right font-mono">{shift.order_count}</td>
                                 <td className="py-1 text-right font-mono">${(shift.total_sales || 0).toLocaleString()}</td>
-                                <td className="py-1 text-right font-mono">${(shift.total_net_profit || 0).toLocaleString()}</td>
+                                <td className="py-1 text-right font-mono">${((shift.total_net_profit || 0) - (shift.total_expenses || 0)).toLocaleString()}</td>
                                 <td className="py-1 text-right font-mono">${shift.initial_cash.toLocaleString()}</td>
                                 <td className="py-1 text-right font-mono">${(shift.final_cash || 0).toLocaleString()}</td>
                                 <td className={cn("py-1 text-right font-mono font-bold", diff >= 0 ? "text-black" : "text-red-700")}>
@@ -194,7 +194,7 @@ const AccountantReportContent = ({ shifts, dateRange }: ReportContentProps) => {
 const ModernReportContent = ({ shifts, dateRange }: ReportContentProps) => {
     // Calculate aggregate data
     const totalSales = shifts.reduce((sum, shift) => sum + (shift.total_sales || 0), 0);
-    const totalNetProfit = shifts.reduce((sum, shift) => sum + (shift.total_net_profit || 0), 0);
+    const totalNetProfit = shifts.reduce((sum, shift) => sum + (shift.total_net_profit || 0) - (shift.total_expenses || 0), 0);
     const totalOrderCount = shifts.reduce((sum, shift) => sum + (shift.order_count || 0), 0);
     const maxSales = Math.max(...shifts.map(s => s.total_sales || 0), 1);
 
@@ -243,12 +243,13 @@ const ModernReportContent = ({ shifts, dateRange }: ReportContentProps) => {
                 <div className="flex items-end justify-between h-44 gap-2 px-2 border-b border-slate-100 pb-1">
                     {shifts.map((shift) => {
                         const salesHeight = Math.max(((shift.total_sales || 0) / maxSales) * 100, 2);
-                        const profitHeight = Math.max(((shift.total_net_profit || 0) / maxSales) * 100, 0);
+                        const operatingProfit = (shift.total_net_profit || 0) - (shift.total_expenses || 0);
+                        const profitHeight = Math.max((operatingProfit / maxSales) * 100, 0);
                         return (
                             <div key={shift.id} className="flex flex-col items-center flex-1 group min-w-[20px]">
                                 <div className="relative w-full flex items-end justify-center h-full gap-1">
                                     <div className="w-2 bg-slate-800 rounded-t-sm opacity-90" style={{ height: `${salesHeight}%` }} title={`Sales: $${shift.total_sales}`}></div>
-                                    <div className="w-2 bg-[#D4AF37] rounded-t-sm opacity-90" style={{ height: `${profitHeight}%` }} title={`Profit: $${shift.total_net_profit}`}></div>
+                                    <div className="w-2 bg-[#D4AF37] rounded-t-sm opacity-90" style={{ height: `${profitHeight}%` }} title={`Profit: $${operatingProfit}`}></div>
                                 </div>
                                 <span className="text-[10px] text-slate-400 mt-2 font-mono">{shift.shift_number}</span>
                             </div>
@@ -276,7 +277,7 @@ const ModernReportContent = ({ shifts, dateRange }: ReportContentProps) => {
                     </thead>
                     <tbody className="divide-y divide-slate-100 text-slate-700">
                         {shifts.map((shift) => {
-                            const expected = (shift.initial_cash || 0) + (shift.cash_sales || 0) + (shift.cash_added || 0) - (shift.cash_removed || 0);
+                            const expected = (shift.initial_cash || 0) + (shift.cash_sales || 0) + (shift.cash_added || 0) - (shift.cash_removed || 0) - (shift.cash_expenses || 0);
                             const diff = (shift.final_cash || 0) - expected;
                             return (
                                 <tr key={shift.id} className="hover:bg-slate-50">
@@ -285,7 +286,7 @@ const ModernReportContent = ({ shifts, dateRange }: ReportContentProps) => {
                                     <td className="px-4 py-3">{shift.closed_by?.username || '-'}</td>
                                     <td className="px-4 py-3 text-right font-mono">{shift.order_count || 0}</td>
                                     <td className="px-4 py-3 text-right font-mono font-medium text-slate-900">${(shift.total_sales || 0).toLocaleString()}</td>
-                                    <td className="px-4 py-3 text-right font-mono text-[#D4AF37] font-medium">${(shift.total_net_profit || 0).toLocaleString()}</td>
+                                    <td className="px-4 py-3 text-right font-mono text-[#D4AF37] font-medium">${((shift.total_net_profit || 0) - (shift.total_expenses || 0)).toLocaleString()}</td>
                                     <td className="px-4 py-3 text-right font-mono text-slate-400">${shift.initial_cash.toLocaleString()}</td>
                                     <td className="px-4 py-3 text-right font-mono">${(shift.final_cash || 0).toLocaleString()}</td>
                                     <td className={cn("px-4 py-3 text-right font-mono font-bold", diff >= 0 ? "text-slate-900" : "text-red-500")}>

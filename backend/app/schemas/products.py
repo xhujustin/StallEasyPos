@@ -6,11 +6,13 @@ from app.schemas.product_attributes import ProductAttributeCreate, ProductAttrib
 class ProductMaterialCreate(BaseModel):
     material_id: int
     quantity: float
+    display_order: int = 0
 
 class ProductMaterialOut(BaseModel):
     id: int
     material_id: int
     quantity: float
+    display_order: int = 0
     material: Optional[MaterialOut] = None
     
     model_config = ConfigDict(from_attributes=True)
@@ -21,6 +23,7 @@ class ProductCreate(BaseModel):
     cost: Optional[float] = None
     category: Optional[str] = None
     is_active: bool = True
+    skip_printing: bool = False
     image_url: Optional[str] = None
     attributes: Optional[List[ProductAttributeCreate]] = None
     materials: Optional[List[ProductMaterialCreate]] = None
@@ -31,6 +34,7 @@ class ProductUpdate(BaseModel):
     cost: Optional[float] = None
     category: Optional[str] = None
     is_active: Optional[bool] = None
+    skip_printing: Optional[bool] = None
     image_url: Optional[str] = None
     attributes: Optional[List[ProductAttributeUpdate]] = None
     materials: Optional[List[ProductMaterialCreate]] = None
@@ -46,6 +50,7 @@ class ProductOut(BaseModel):
     cost: Optional[float]
     category: Optional[str]
     is_active: bool
+    skip_printing: bool
     display_order: int
     attributes: List[ProductAttributeOut] = []
     image_url: Optional[str]
